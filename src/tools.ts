@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react'
 import { AspectResizeTool } from '@/components/AspectResizeTool'
 import { UuidGeneratorTool } from '@/components/UuidGeneratorTool'
+import { ClockTool } from '@/components/ClockTool'
 
 export interface Tool {
   id: string
@@ -21,5 +22,11 @@ export const TOOLS: Tool[] = [
     name: 'UUID Generator',
     description: 'Generate UUIDs of all versions (v1, v3, v4, v5, v6, v7) in your browser.',
     component: UuidGeneratorTool,
+  },
+  {
+    id: 'clock',
+    name: 'Clock',
+    description: 'All-in-one clock tool with alarm, stopwatch, timer, and world timezones.',
+    component: ClockTool,
   },
 ]
