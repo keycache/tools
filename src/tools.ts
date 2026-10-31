@@ -4,6 +4,7 @@ import { UuidGeneratorTool } from '@/components/UuidGeneratorTool'
 import { ClockTool } from '@/components/ClockTool'
 import { DateMathTool } from '@/components/DateMathTool'
 import { ImageCompressionTool } from '@/components/ImageCompressionTool'
+import { PdfCompressionTool } from '@/components/PdfCompressionTool'
 
 export interface Tool {
   id: string
@@ -42,5 +43,11 @@ export const TOOLS: Tool[] = [
     name: 'Image Compression',
     description: 'Compress images with quality control. Real-time size preview.',
     component: ImageCompressionTool,
+  },
+  {
+    id: 'pdf-compression',
+    name: 'PDF Compression',
+    description: 'Compress PDFs with quality control. Real-time size preview.',
+    component: PdfCompressionTool,
   },
 ]

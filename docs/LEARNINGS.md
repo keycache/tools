@@ -2,6 +2,53 @@
 
 This file documents non-obvious findings, solutions, and missteps encountered while developing this tools application. Entries are added when solving issues that required more than 2-3 attempts.
 
+## PDF.js Worker Setup in Bundled Environment
+
+**Problem**: PDF compression tool failed at runtime with "Setting up fake worker failed: 'error loading dynamically imported module from CDN'" when trying to load the PDF.js worker from a CDN URL.
+
+**Solution**: 
+- Use Vite's module resolution to load the worker from pdfjs-dist package directly
+- Create the worker URL using `new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).href`
+- Vite automatically bundles this as an asset and Provides the correct URL at runtime
+- The worker gets bundled alongside the main app (~1.2 MB minified)
+
+**Missteps**:
+1. Initially tried loading worker from CDN: `//cdnjs.cloudflare.com/ajax/libs/pdf.js/...` - failed due to CORS and module import issues
+2. Attempted to manually copy worker file with Vite plugin - unnecessary, Vite handles it automatically
+3. Used wrong file extension `.min.js` instead of `.min.mjs` that pdfjs-dist actually provides
+
+**Key Insight**: 
+- pdfjs-dist uses `.mjs` (ES modules) not `.js`
+- Vite automatically resolves `new URL()` with `import.meta.url` during build, converting it to a bundled asset path
+- The worker is separate from the main bundle (~1.2 MB) for modularity but still included in the build
+- No custom copy plugins needed - let Vite handle it
+
+---
+
+## PDF Compression via Image Rendering
+
+**Problem**: Building a browser-based PDF compression tool that actually reduces file size while maintaining reasonable quality. Standard PDF stream compression isn't available client-side.
+
+**Solution**: 
+- Use `pdfjs-dist` to render each PDF page to canvas at 2x scale (viewport scale: 2)
+- Compress canvas to JPEG/PNG/WebP using quality slider (1-100%)
+- Use `pdf-lib` to embed compressed images back into a new PDF document
+- Estimate output size by sampling first page, multiply by total pages, add 5% overhead for PDF structure
+
+**Missteps**:
+1. Initially tried to find a client-side PDF stream compression library - no good options exist
+2. Attempted direct ArrayBuffer manipulation - PDF format is complex, error-prone
+3. Used single-scale rendering (1x) - resulted in blurry text at lower quality levels; 2x scale mitigates this
+4. Didn't account for PDF structure overhead in size estimation - estimated size was 10-15% off
+
+**Key Insight**: 
+- Image-based approach is lossy but transparent to users (similar to Acrobat's export to image-then-PDF workflow)
+- Rendering at 2x then compressing gives better quality than rendering at 1x
+- Size estimation only needs to sample first page - pages in a document typically have similar compression ratios
+- pdf-lib type definitions have complex SharedArrayBuffer issues with TypeScript - use `as any` for ArrayBuffer conversions
+
+---
+
 ## Web Audio API - Oscillator Timing & AudioContext Closure
 
 **Problem**: Timer completion sound was continuing to play even after clicking "Dismiss Alarm". Sound played twice when triggered, creating a confusing user experience.
@@ -101,4 +148,5 @@ const [selectedSound, setSelectedSound] = useState(() => {
 - Much simpler than calculating exact delay or using precision timers
 - Page can lose focus, browser can be throttled - polling handles these gracefully
 - Only checking hours and minutes (not seconds) is intentional - user sets alarms to the minute level
+
 
