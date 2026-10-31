@@ -141,6 +141,33 @@ npm run deploy   # Push dist/ to GitHub Pages
 - `tsconfig.app.json` - app-specific settings
 - `tsconfig.node.json` - Vite/build config
 
+### Documentation & Artifacts
+- **Do NOT create** implementation detail documentation files (e.g., `SOLUTION.md`, `DEBUGGING.md`, `FIX_SUMMARY.md`)
+- **Do NOT create** testing guides or manual verification documents for implementation work
+- **Do NOT create** intermediate progress reports or session summaries as standalone files
+- These files clutter the repository and are not useful for future development
+- **Instead**: Keep all implementation details in code comments, git commit messages, and test files
+- Exception: Only create documentation files if explicitly requested by the user
+
+### Learnings & Knowledge Base
+- **DO create** `docs/LEARNINGS.md` entries for non-obvious findings
+- **Add an entry** when spending **more than 2-3 attempts** on the same issue
+- **Entry format**:
+  ```markdown
+  ## [Brief Title]
+  **Problem**: What was the issue?
+  **Solution**: What worked?
+  **Missteps**: What approaches didn't work and why?
+  **Key Insight**: Why was this tricky?
+  ```
+- **Examples of entries worth documenting**:
+  - Audio API behavior (e.g., oscillators and timing)
+  - React patterns (hooks, rendering, cleanup)
+  - Browser APIs (Web Audio, localStorage timing)
+  - Common gotchas with async/state management
+- **Purpose**: Help future developers avoid the same pitfalls
+- **Maintain this file** across sessions as a knowledge base
+
 ## Data Flow & State Management
 
 ### Per-Tool State
