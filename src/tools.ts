@@ -2,6 +2,7 @@ import type { ComponentType } from 'react'
 import { AspectResizeTool } from '@/components/AspectResizeTool'
 import { UuidGeneratorTool } from '@/components/UuidGeneratorTool'
 import { ClockTool } from '@/components/ClockTool'
+import { DateMathTool } from '@/components/DateMathTool'
 
 export interface Tool {
   id: string
@@ -28,5 +29,11 @@ export const TOOLS: Tool[] = [
     name: 'Clock',
     description: 'All-in-one clock tool with alarm, stopwatch, timer, and world timezones.',
     component: ClockTool,
+  },
+  {
+    id: 'date-math',
+    name: 'DateMath',
+    description: 'Calculate date differences, add/subtract days and weekdays.',
+    component: DateMathTool,
   },
 ]
