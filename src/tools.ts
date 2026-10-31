@@ -3,6 +3,7 @@ import { AspectResizeTool } from '@/components/AspectResizeTool'
 import { UuidGeneratorTool } from '@/components/UuidGeneratorTool'
 import { ClockTool } from '@/components/ClockTool'
 import { DateMathTool } from '@/components/DateMathTool'
+import { ImageCompressionTool } from '@/components/ImageCompressionTool'
 
 export interface Tool {
   id: string
@@ -35,5 +36,11 @@ export const TOOLS: Tool[] = [
     name: 'DateMath',
     description: 'Calculate date differences, add/subtract days and weekdays.',
     component: DateMathTool,
+  },
+  {
+    id: 'image-compression',
+    name: 'Image Compression',
+    description: 'Compress images with quality control. Real-time size preview.',
+    component: ImageCompressionTool,
   },
 ]
