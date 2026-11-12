@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { playSoundById } from '@/lib/audioSounds'
+import { playBeepSound, playSoundById } from '@/lib/audioSounds'
 
 interface AlarmPreset {
   time: string
@@ -13,9 +13,11 @@ interface AlarmPreset {
 
 interface AlarmTabProps {
   selectedSound: string
+  /** Called when the alarm starts ringing, so the parent can bring this tab into view. */
+  onAlert?: () => void
 }
 
-export function AlarmTab({ selectedSound }: AlarmTabProps) {
+export function AlarmTab({ selectedSound, onAlert }: AlarmTabProps) {
   const [presets, setPresets] = useState<AlarmPreset[]>([])
   const [activeAlarm, setActiveAlarm] = useState<string | null>(null)
   const [customHours, setCustomHours] = useState<string>('')
@@ -55,22 +57,21 @@ export function AlarmTab({ selectedSound }: AlarmTabProps) {
     }
 
     const checkAlarm = setInterval(() => {
-      const now = new Date()
-      // Check if current time matches alarm time (within the same minute)
-      if (
-        now.getHours() === alarmDateTime.getHours() &&
-        now.getMinutes() === alarmDateTime.getMinutes() &&
-        !alarmTriggered
-      ) {
+      // ">= start of the alarm minute" rather than "same hour and minute": a hidden tab may only get
+      // one timer tick per minute, which could skip past the matching minute entirely.
+      const due = new Date(alarmDateTime)
+      due.setSeconds(0, 0)
+      if (Date.now() >= due.getTime() && !alarmTriggered) {
         setAlarmTriggered(true)
         setAlarmSounding(true)
+        onAlert?.()
         // Play selected sound for 60 seconds
         soundControlRef.current = playSoundById(selectedSound)
       }
     }, 1000) // Check every second
 
     return () => clearInterval(checkAlarm)
-  }, [alarmDateTime, alarmTriggered, selectedSound])
+  }, [alarmDateTime, alarmTriggered, selectedSound, onAlert])
 
   const handleSetAlarm = (timeStr: string, dateTime?: Date) => {
     setActiveAlarm(timeStr)
@@ -78,8 +79,9 @@ export function AlarmTab({ selectedSound }: AlarmTabProps) {
     if (dateTime) {
       setAlarmDateTime(dateTime)
     }
-    // Play confirmation sound
-    playSoundById(selectedSound)
+    // Short one-off confirmation chirp. (playSoundById returns the 60s *looping* alarm sound, which
+    // made the alarm appear to go off the moment it was set, with nothing to dismiss it.)
+    playBeepSound(0.15, 880)
   }
 
   const handleSetCustomAlarm = () => {

@@ -24,17 +24,21 @@ export function StopwatchTab({
   lapCounter,
   setLapCounter,
 }: StopwatchTabProps) {
+  // Elapsed time is anchored to the wall clock instead of adding 10ms per tick, so it stays correct when
+  // a hidden tab throttles setInterval (see TimerTab for the same fix).
   useEffect(() => {
-    let intervalId: ReturnType<typeof setInterval>
-
-    if (isRunning) {
-      intervalId = setInterval(() => {
-        setTime(time + 10)
-      }, 10)
+    if (!isRunning) return
+    const startedAt = Date.now() - time
+    const tick = () => setTime(Date.now() - startedAt)
+    const intervalId = setInterval(tick, 10)
+    document.addEventListener('visibilitychange', tick)
+    return () => {
+      clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', tick)
     }
-
-    return () => clearInterval(intervalId)
-  }, [isRunning, time, setTime])
+    // `time` is only the starting offset; re-running on every tick would reset the anchor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRunning, setTime])
 
   const formatTime = (ms: number): string => {
     const totalSeconds = Math.floor(ms / 1000)

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Clock, Bell, Zap, Globe, Volume2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AlarmTab } from '@/components/clock/AlarmTab'
@@ -18,6 +18,8 @@ export interface Lap {
 
 export function ClockTool() {
   const [activeTab, setActiveTab] = useState<TabType>('alarm')
+  const showAlarm = useCallback(() => setActiveTab('alarm'), [])
+  const showTimer = useCallback(() => setActiveTab('timer'), [])
   const [selectedSound, setSelectedSound] = useState(() => {
     return localStorage.getItem('selectedSound') || 'alarm'
   })
@@ -66,8 +68,12 @@ export function ClockTool() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'alarm' && <AlarmTab selectedSound={selectedSound} />}
-      {activeTab === 'stopwatch' && (
+      {/* All panels stay mounted (inactive ones hidden) so the timer, stopwatch and alarm keep running
+          while another clock tab is open. A ringing timer/alarm brings its own tab forward. */}
+      <div hidden={activeTab !== 'alarm'}>
+        <AlarmTab selectedSound={selectedSound} onAlert={showAlarm} />
+      </div>
+      <div hidden={activeTab !== 'stopwatch'}>
         <StopwatchTab
           time={stopwatchTime}
           setTime={setStopwatchTime}
@@ -78,10 +84,16 @@ export function ClockTool() {
           lapCounter={stopwatchLapCounter}
           setLapCounter={setStopwatchLapCounter}
         />
-      )}
-      {activeTab === 'timer' && <TimerTab selectedSound={selectedSound} />}
-      {activeTab === 'time' && <TimeTab />}
-      {activeTab === 'sound' && <SoundTab selectedSound={selectedSound} onSoundChange={setSelectedSound} />}
+      </div>
+      <div hidden={activeTab !== 'timer'}>
+        <TimerTab selectedSound={selectedSound} onAlert={showTimer} />
+      </div>
+      <div hidden={activeTab !== 'time'}>
+        <TimeTab />
+      </div>
+      <div hidden={activeTab !== 'sound'}>
+        <SoundTab selectedSound={selectedSound} onSoundChange={setSelectedSound} />
+      </div>
     </div>
   )
 }

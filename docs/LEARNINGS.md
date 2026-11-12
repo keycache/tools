@@ -172,3 +172,17 @@ const [selectedSound, setSelectedSound] = useState(() => {
 3. `caches.open()` *creates* a cache, so a status check after "Clear" resurrected an empty cache. Check with `caches.has()` first.
 
 **Key Insight**: The Python SDK in github.com/cactus-compute/cactus (`cactus/agent/*.py`) is the best reference for the C ABI contract. Bump `ASSET_VERSION` in `src/lib/cactus/assets.ts` whenever model files change; `tests/unit/cactusEngine.test.ts` fails if registry byte sizes drift.
+
+---
+
+## Timers Pause in Background Tabs (Clock: Timer & Stopwatch)
+
+**Problem**: The countdown timer (and stopwatch) nearly stopped while the browser tab was hidden, but kept running when the tab stayed visible and only the window lost focus.
+
+**Solution**: Derive time from the wall clock instead of counting ticks. Store a deadline (`endAt = Date.now() + remaining`) or start anchor (`startedAt = Date.now() - elapsed`) when starting, and on each tick compute `endAt - Date.now()` / `Date.now() - startedAt`. Also re-sync on `visibilitychange`, and schedule a one-shot `setTimeout` for the exact finish time so the alarm isn't delayed.
+
+**Missteps**: The original code did `timeLeft - 100` every 100ms `setInterval` tick (stopwatch: `time + 10` every 10ms), assuming ticks arrive on schedule.
+
+**Second cause (the one actually reported)**: "the tab" meant the Clock tool's own Timer tab, not the browser tab. `ClockTool` rendered panels with `activeTab === 'timer' && <TimerTab/>`, so switching to Stopwatch/Alarm *unmounted* the timer and killed its interval (and its state). Fix: keep every panel mounted and toggle the `hidden` attribute; a ringing timer/alarm calls `onAlert` so the parent switches to its tab (otherwise Dismiss would be hidden).
+
+**Key Insight**: Anything that must keep running (timers, alarms, recordings) can't live in a conditionally-rendered component. Also: browsers throttle timers in *hidden* tabs (≥1s; Chrome's intensive throttling ~1/min for chained timers after ~5 min hidden). A blurred-but-visible window isn't throttled, which is why it "worked" there. Tick counting is only correct if every tick fires; wall-clock math is correct no matter how often ticks fire.

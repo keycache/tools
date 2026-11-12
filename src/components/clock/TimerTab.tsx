@@ -5,9 +5,11 @@ import { playSoundById } from '@/lib/audioSounds'
 
 interface TimerTabProps {
   selectedSound: string
+  /** Called when the countdown finishes, so the parent can bring this tab into view. */
+  onAlert?: () => void
 }
 
-export function TimerTab({ selectedSound }: TimerTabProps) {
+export function TimerTab({ selectedSound, onAlert }: TimerTabProps) {
   const [duration, setDuration] = useState(0)
   const [timeLeft, setTimeLeft] = useState(0)
   const [isRunning, setIsRunning] = useState(false)
@@ -17,6 +19,8 @@ export function TimerTab({ selectedSound }: TimerTabProps) {
   const [customSeconds, setCustomSeconds] = useState<string>('')
   const soundControlRef = useRef<{ stop: () => void } | null>(null)
   const soundStartedRef = useRef(false)
+  /** Epoch ms when the running timer reaches zero; null while paused/stopped. */
+  const endAtRef = useRef<number | null>(null)
 
   // Cleanup sound on unmount
   useEffect(() => {
@@ -32,32 +36,42 @@ export function TimerTab({ selectedSound }: TimerTabProps) {
   useEffect(() => {
     if (isCompleted && !soundStartedRef.current) {
       soundStartedRef.current = true
+      onAlert?.()
       const soundControl = playSoundById(selectedSound)
       if (soundControl) {
         soundControlRef.current = soundControl
       }
     }
-  }, [isCompleted, selectedSound])
+  }, [isCompleted, selectedSound, onAlert])
 
-  // Timer tick effect
+  // Timer tick effect. Remaining time is derived from a wall-clock deadline rather than decremented per
+  // tick: background tabs throttle setInterval (≥1s, or ~1/min in Chrome after a while), which made a
+  // decrementing timer crawl while the tab was hidden.
   useEffect(() => {
-    let intervalId: ReturnType<typeof setInterval>
+    if (!isRunning || endAtRef.current == null) return
+    const endAt = endAtRef.current
 
-    if (isRunning && timeLeft > 0) {
-      intervalId = setInterval(() => {
-        setTimeLeft((prev) => {
-          const newTime = Math.max(0, prev - 100)
-          if (newTime === 0) {
-            setIsRunning(false)
-            setIsCompleted(true)
-          }
-          return newTime
-        })
-      }, 100)
+    const tick = () => {
+      const remaining = Math.max(0, endAt - Date.now())
+      setTimeLeft(remaining)
+      if (remaining === 0) {
+        setIsRunning(false)
+        setIsCompleted(true)
+      }
     }
 
-    return () => clearInterval(intervalId)
-  }, [isRunning, timeLeft])
+    const intervalId = setInterval(tick, 100)
+    // A one-shot timeout isn't subject to Chrome's intensive throttling of repeating timers, so the
+    // alarm still fires on time while the tab is hidden.
+    const finishId = setTimeout(tick, Math.max(0, endAt - Date.now()))
+    document.addEventListener('visibilitychange', tick)
+
+    return () => {
+      clearInterval(intervalId)
+      clearTimeout(finishId)
+      document.removeEventListener('visibilitychange', tick)
+    }
+  }, [isRunning])
 
   const formatTime = (ms: number): string => {
     const totalSeconds = Math.floor(ms / 1000)
@@ -69,6 +83,7 @@ export function TimerTab({ selectedSound }: TimerTabProps) {
   }
 
   const handlePresetClick = (milliseconds: number) => {
+    endAtRef.current = null
     setDuration(milliseconds)
     setTimeLeft(milliseconds)
     setIsRunning(false)
@@ -99,14 +114,20 @@ export function TimerTab({ selectedSound }: TimerTabProps) {
   }
 
   const handleStart = () => {
-    if (duration > 0 && !isCompleted) {
+    if (duration > 0 && !isCompleted && timeLeft > 0) {
+      endAtRef.current = Date.now() + timeLeft
       setIsRunning(true)
     }
   }
 
-  const handlePause = () => setIsRunning(false)
+  const handlePause = () => {
+    if (endAtRef.current != null) setTimeLeft(Math.max(0, endAtRef.current - Date.now()))
+    endAtRef.current = null
+    setIsRunning(false)
+  }
 
   const handleReset = () => {
+    endAtRef.current = null
     setIsRunning(false)
     setTimeLeft(duration)
     setIsCompleted(false)
