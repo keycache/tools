@@ -4,9 +4,10 @@ import { cn } from '@/lib/utils'
 
 interface Props {
   onFile: (file: File) => void
+  className?: string
 }
 
-export function ImageDropzone({ onFile }: Props) {
+export function ImageDropzone({ onFile, className }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
 
@@ -36,6 +37,7 @@ export function ImageDropzone({ onFile }: Props) {
       className={cn(
         'flex h-64 cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed text-muted-foreground transition-colors',
         dragging ? 'border-primary bg-muted' : 'border-border hover:bg-muted/50',
+        className,
       )}
     >
       <Upload className="size-8" />

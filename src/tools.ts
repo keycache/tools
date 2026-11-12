@@ -5,6 +5,7 @@ import { ClockTool } from '@/components/ClockTool'
 import { DateMathTool } from '@/components/DateMathTool'
 import { ImageCompressionTool } from '@/components/ImageCompressionTool'
 import { PdfCompressionTool } from '@/components/PdfCompressionTool'
+import { EdgeAiStudioTool } from '@/components/EdgeAiStudioTool'
 
 export interface Tool {
   id: string
@@ -49,5 +50,11 @@ export const TOOLS: Tool[] = [
     name: 'PDF Compression',
     description: 'Compress PDFs with quality control. Real-time size preview.',
     component: PdfCompressionTool,
+  },
+  {
+    id: 'edge-ai-studio',
+    name: 'Edge AI Studio',
+    description: 'Tool calling, speech-to-text and image understanding with tiny AI models running fully in your browser.',
+    component: EdgeAiStudioTool,
   },
 ]

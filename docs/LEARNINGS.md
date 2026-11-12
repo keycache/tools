@@ -150,3 +150,25 @@ const [selectedSound, setSelectedSound] = useState(() => {
 - Only checking hours and minutes (not seconds) is intentional - user sets alarms to the minute level
 
 
+---
+
+## Cactus WASM Engine (Edge AI Studio) - Loading & Calling the C ABI
+
+**Problem**: Run the Cactus engine (`public/models/cactus/cactus.js` + `cactus.wasm`) and three `.cact` models in the browser, cache-first, without blocking the UI.
+
+**Solution**:
+- Run everything in a module Web Worker (`src/lib/cactus/cactus.worker.ts`); describe/complete take 0.3–2 s and would freeze the page.
+- `cactus.js` is UMD/CommonJS Emscripten glue. Read it from Cache Storage, append `export default createCactus`, and `import()` it from a blob URL. Pass `wasmBinary` so it never fetches `cactus.wasm` itself.
+- The build is single-threaded (no `SharedArrayBuffer`), so no COOP/COEP headers are needed – works on GitHub Pages.
+- `cactus_load(ptr, n)` takes a `u64` → pass a `BigInt`. The engine copies the bytes, so free the buffer right after.
+- One engine holds all three models at once (`cactus_models()` bitmask 1|2|4, ~260 MB heap).
+- Needle is stateful: call `cactus_init(system, toolsJson, NULL)` then `cactus_reset()` before every independent `cactus_complete`.
+- Mirage geometry (bbox `[x1,y1,x2,y2]`, flat polygon masks) is on a 0–1000 scale relative to the image → SVG `viewBox="0 0 1000 1000" preserveAspectRatio="none"`.
+- Mirage string form fields (`{type:"string"}`) are unreliable; enum/integer fields return calibrated probabilities (`"-"` = abstain).
+
+**Missteps**:
+1. `require('cactus.js')` in Vitest returned nothing: the repo's `"type": "module"` makes Node treat it as ESM. Tests evaluate it with `new Function('module','exports','require',…)` instead.
+2. `/// <reference lib="webworker" />` in the worker leaks WebWorker types into the whole DOM program and clashes – type the few worker globals locally.
+3. `caches.open()` *creates* a cache, so a status check after "Clear" resurrected an empty cache. Check with `caches.has()` first.
+
+**Key Insight**: The Python SDK in github.com/cactus-compute/cactus (`cactus/agent/*.py`) is the best reference for the C ABI contract. Bump `ASSET_VERSION` in `src/lib/cactus/assets.ts` whenever model files change; `tests/unit/cactusEngine.test.ts` fails if registry byte sizes drift.
