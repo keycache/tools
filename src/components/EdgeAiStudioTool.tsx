@@ -9,7 +9,7 @@ import { SeeTab } from '@/components/edge-ai/SeeTab'
 import { StorageMenu } from '@/components/edge-ai/StorageMenu'
 import { isCacheSupported, type ModelId } from '@/lib/cactus/assets'
 import { useCacheInfo } from '@/lib/cactus/client'
-import { useGemmaCache } from '@/lib/gemma/hooks'
+import { useChatStorage, useGemmaCache } from '@/lib/gemma/hooks'
 
 type TabId = 'listen' | 'see' | 'act' | 'chat'
 
@@ -26,6 +26,7 @@ export function EdgeAiStudioTool() {
   const [visited, setVisited] = useState<Set<TabId>>(() => new Set([TABS[0].id]))
   const cache = useCacheInfo()
   const gemmaCache = useGemmaCache()
+  const chats = useChatStorage()
 
   const open = (id: TabId) => {
     setActive(id)
@@ -61,6 +62,14 @@ export function EdgeAiStudioTool() {
               entries={[
                 { id: 'cactus', label: 'Listen · See · Act models', bytes: cache.bytes, clear: cache.clear },
                 { id: 'gemma', label: 'Chat model (Gemma)', bytes: gemmaCache.bytes, clear: gemmaCache.clear },
+                {
+                  id: 'chats',
+                  label: `Saved chats (${chats.conversations})`,
+                  bytes: chats.bytes,
+                  clear: chats.clear,
+                  // Models are safe to pre-select (re-downloadable); conversations are not.
+                  preselect: false,
+                },
               ]}
             />
           ) : (

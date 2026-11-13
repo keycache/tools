@@ -8,6 +8,8 @@ export interface StorageEntry {
   label: string
   bytes: number
   clear: () => Promise<void>
+  /** Checked by default when the Clear menu opens (default true). */
+  preselect?: boolean
 }
 
 /** "Stored in browser: X · Clear" with a menu to pick which stores to remove. */
@@ -56,7 +58,7 @@ export function StorageMenu({ entries }: { entries: StorageEntry[] }) {
           aria-expanded={open}
           aria-haspopup="dialog"
           onClick={() => {
-            setSelected(new Set(removable.map((e) => e.id)))
+            setSelected(new Set(removable.filter((e) => e.preselect !== false).map((e) => e.id)))
             setOpen((o) => !o)
           }}
         >

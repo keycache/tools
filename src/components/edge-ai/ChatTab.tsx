@@ -1,16 +1,27 @@
 import { Suspense, lazy, useCallback, useDeferredValue, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Cpu, Loader2, MessageSquarePlus, Mic, Paperclip, Send, Square, X } from 'lucide-react'
+import { Cpu, Loader2, MessageSquarePlus, Mic, PanelLeft, Paperclip, Send, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ConversationList } from '@/components/edge-ai/ConversationList'
 import { ModelGate, type ModelSource } from '@/components/edge-ai/ModelGate'
 import { CopyButton, ErrorNote, Select } from '@/components/edge-ai/shared'
 import { useAudioCapture, type CapturedAudio } from '@/components/edge-ai/useAudioCapture'
-import { AUDIO_ACCEPT, formatBytes, isAudioFile, prepareImage } from '@/lib/cactus/media'
+import { AUDIO_ACCEPT, encodeWav, formatBytes, isAudioFile, prepareImage } from '@/lib/cactus/media'
 import { AUDIO_SAMPLE_RATE, MAX_AUDIO_SECONDS } from '@/lib/gemma/conversation'
 import type { Capability } from '@/lib/gemma/capability'
 import { gemma, useGemma, type GemmaState } from '@/lib/gemma/client'
 import { GEMMA_MODEL_ID, ORT_RUNTIME_BYTES, gemmaTotalBytes } from '@/lib/gemma/constants'
-import { useGemmaCapability, type GemmaCacheState } from '@/lib/gemma/hooks'
+import { notifyChatsChanged, onChatsChanged, useGemmaCapability, type GemmaCacheState } from '@/lib/gemma/hooks'
 import type { GenSettings, GenStats } from '@/lib/gemma/protocol'
+import {
+  chatStore,
+  getLastOpen,
+  isChatStorageSupported,
+  newChatId,
+  setLastOpen,
+  titleFrom,
+  type StoredConversation,
+  type StoredMessage,
+} from '@/lib/gemma/storage'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -47,6 +58,7 @@ interface ChatMessage {
   thinking?: string
   stats?: GenStats
   stopped?: boolean
+  createdAt: number
 }
 
 const MAX_TOKEN_OPTIONS = [256, 512, 1024, 2048]
@@ -57,6 +69,40 @@ const DEFAULT_SETTINGS: GenSettings = { temperature: 0, topP: 0.95, maxNewTokens
 
 let nextMessageId = 1
 const newId = () => `m${nextMessageId++}`
+
+function toStored(m: ChatMessage, conversationId: string, index: number): StoredMessage {
+  return {
+    id: m.id,
+    conversationId,
+    index,
+    role: m.role,
+    text: m.text,
+    thinking: m.thinking,
+    images: m.images?.map((a) => ({ blob: a.blob, name: a.name })),
+    audio: m.audio && { pcm: m.audio.pcm, name: m.audio.name, seconds: m.audio.seconds, trimmed: m.audio.trimmed },
+    stats: m.stats,
+    stopped: m.stopped,
+    createdAt: m.createdAt,
+  }
+}
+
+/** Rebuilds a transcript message; `track` registers each new object URL for later revocation. */
+function fromStored(s: StoredMessage, track: (url: string) => string): ChatMessage {
+  return {
+    id: s.id,
+    role: s.role,
+    text: s.text,
+    thinking: s.thinking,
+    images: s.images?.map((img) => ({ id: newId(), blob: img.blob, name: img.name, url: track(URL.createObjectURL(img.blob)) })),
+    // Only the PCM sent to the model is stored, so playback uses a WAV rebuilt from it.
+    audio: s.audio && { ...s.audio, url: track(URL.createObjectURL(encodeWav(s.audio.pcm, AUDIO_SAMPLE_RATE))) },
+    stats: s.stats,
+    stopped: s.stopped,
+    createdAt: s.createdAt,
+  }
+}
+
+const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
 export function ChatTab({ active, visited, cache }: Props) {
   const capability = useGemmaCapability(visited, cache.bytes)
@@ -88,15 +134,186 @@ export function ChatTab({ active, visited, cache }: Props) {
     const live = urls.current
     return () => live.forEach((u) => URL.revokeObjectURL(u))
   }, [])
-  const release = (items: ({ url: string } | undefined)[] = []) =>
+  const release = useCallback((items: ({ url: string } | undefined)[] = []) => {
     items.forEach((a) => {
       if (!a) return
       URL.revokeObjectURL(a.url)
       urls.current.delete(a.url)
     })
+  }, [])
 
   const ready = state.status === 'ready'
   const busy = !!state.stream
+
+  // --- Saved conversations -------------------------------------------------------------------------------------
+  const [conversations, setConversations] = useState<StoredConversation[]>([])
+  const [activeConv, setActiveConv] = useState<StoredConversation | null>(null)
+  const [listOpen, setListOpen] = useState(false)
+  const activeRef = useRef<StoredConversation | null>(null)
+  /** How many of the current transcript's messages are already in IndexedDB (later saves append the rest). */
+  const savedCount = useRef(0)
+  const saveQueue = useRef<Promise<void>>(Promise.resolve())
+  /** Bumped whenever the transcript is replaced, so late replies / saves from the previous chat are ignored. */
+  const session = useRef(0)
+  const messagesRef = useRef(messages)
+  const busyRef = useRef(busy)
+  useEffect(() => {
+    messagesRef.current = messages
+    busyRef.current = busy
+  })
+
+  const setActive = useCallback((conv: StoredConversation | null) => {
+    activeRef.current = conv
+    setActiveConv(conv)
+  }, [])
+
+  const refreshList = useCallback(async (): Promise<StoredConversation[]> => {
+    if (!isChatStorageSupported()) return []
+    try {
+      const list = await chatStore.listConversations()
+      setConversations(list)
+      return list
+    } catch {
+      return []
+    }
+  }, [])
+
+  const replaceTranscript = useCallback(
+    (next: ChatMessage[]) => {
+      session.current++
+      messagesRef.current.forEach((m) => release([...(m.images ?? []), m.audio]))
+      messagesRef.current = next
+      setMessages(next)
+      setError(null)
+      setLastTrimmed(0)
+      setLastDroppedAudio(0)
+    },
+    [release],
+  )
+
+  const startNewChat = useCallback(() => {
+    replaceTranscript([])
+    setActive(null)
+    savedCount.current = 0
+    setLastOpen(null)
+  }, [replaceTranscript, setActive])
+
+  const openConversation = useCallback(
+    async (id: string) => {
+      const token = ++session.current
+      try {
+        const [conv, stored] = await Promise.all([chatStore.getConversation(id), chatStore.getMessages(id)])
+        if (token !== session.current) return
+        if (!conv) {
+          setLastOpen(null)
+          return
+        }
+        replaceTranscript(
+          stored.map((s) =>
+            fromStored(s, (url) => {
+              urls.current.add(url)
+              return url
+            }),
+          ),
+        )
+        setActive(conv)
+        savedCount.current = stored.length
+        setSettings(conv.settings)
+        setLastOpen(id)
+      } catch (err) {
+        setError(`Couldn't open the chat: ${errorText(err)}`)
+      }
+    },
+    [replaceTranscript, setActive],
+  )
+
+  // Restore the last-open chat the first time the tab is opened (works before the model is loaded).
+  useEffect(() => {
+    if (!visited || !isChatStorageSupported()) return
+    let cancelled = false
+    chatStore
+      .listConversations()
+      .then((list) => {
+        if (cancelled) return
+        setConversations(list)
+        const last = getLastOpen()
+        if (last && list.some((c) => c.id === last) && !activeRef.current && !messagesRef.current.length) void openConversation(last)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [visited, openConversation])
+
+  // Saved chats changed (here or via "Clear" in the storage menu): refresh, and leave a chat that no longer exists.
+  useEffect(
+    () =>
+      onChatsChanged(() => {
+        void refreshList().then((list) => {
+          const cur = activeRef.current
+          if (!cur || list.some((c) => c.id === cur.id)) return
+          if (busyRef.current) gemma.stop()
+          startNewChat()
+        })
+      }),
+    [refreshList, startNewChat],
+  )
+
+  /** Appends unsaved messages of `history` to the open conversation (creating it on the first message). */
+  function persist(history: ChatMessage[], forSession: number, withSettings: GenSettings) {
+    if (!isChatStorageSupported()) return
+    saveQueue.current = saveQueue.current.then(async () => {
+      if (forSession !== session.current) return
+      try {
+        const now = Date.now()
+        let conv = activeRef.current
+        if (conv) {
+          // Re-read so a rename made meanwhile isn't overwritten.
+          conv = { ...((await chatStore.getConversation(conv.id)) ?? conv), updatedAt: now, settings: withSettings }
+        } else {
+          const first = history.find((m) => m.role === 'user')
+          conv = {
+            id: newChatId(),
+            title: titleFrom(first?.text ?? '', first?.images?.length ?? 0, !!first?.audio),
+            titleEdited: false,
+            createdAt: now,
+            updatedAt: now,
+            settings: withSettings,
+          }
+          savedCount.current = 0
+        }
+        const start = savedCount.current
+        const id = conv.id
+        await chatStore.save(conv, history.slice(start).map((m, i) => toStored(m, id, start + i)))
+        if (forSession !== session.current) return
+        savedCount.current = history.length
+        setActive(conv)
+        setLastOpen(conv.id)
+        notifyChatsChanged()
+      } catch (err) {
+        setError(`Couldn't save this chat: ${errorText(err)}`)
+      }
+    })
+  }
+
+  async function renameConversation(id: string, title: string) {
+    try {
+      const next = await chatStore.rename(id, title)
+      if (next && activeRef.current?.id === id) setActive(next)
+      notifyChatsChanged()
+    } catch (err) {
+      setError(`Couldn't rename the chat: ${errorText(err)}`)
+    }
+  }
+
+  async function deleteConversation(id: string) {
+    try {
+      await chatStore.remove(id)
+      notifyChatsChanged()
+    } catch (err) {
+      setError(`Couldn't delete the chat: ${errorText(err)}`)
+    }
+  }
 
   // Recording / audio-file decoding (16 kHz mono PCM), shared with the Listen tab.
   const capture = useAudioCapture((clip: CapturedAudio) => {
@@ -161,34 +378,45 @@ export function ChatTab({ active, visited, cache }: Props) {
 
   async function send() {
     if (!canSend) return
+    const forSession = session.current
+    const sentWith = settings
     const history: ChatMessage[] = [
       ...messages,
-      { id: newId(), role: 'user', text: input.trim(), images: attachments.length ? attachments : undefined, audio: audioClip ?? undefined },
+      {
+        id: newChatId(),
+        role: 'user',
+        text: input.trim(),
+        images: attachments.length ? attachments : undefined,
+        audio: audioClip ?? undefined,
+        createdAt: Date.now(),
+      },
     ]
+    messagesRef.current = history
     setMessages(history)
     setInput('')
     setAttachments([])
     setAudioClip(null)
     setError(null)
+    persist(history, forSession, sentWith)
     try {
       const done = await gemma.generate(
         history.map((m) => ({ role: m.role, text: m.text, images: m.images?.map((i) => i.blob), audio: m.audio?.pcm })),
-        settings,
+        sentWith,
       )
+      // The user switched / started another chat meanwhile (only possible if its saved copy was removed).
+      if (forSession !== session.current) return
       setLastTrimmed(done.stats.trimmedTurns)
       setLastDroppedAudio(done.stats.droppedAudio)
-      setMessages((h) => [...h, { id: newId(), role: 'assistant', text: done.answer, thinking: done.thinking || undefined, stats: done.stats, stopped: done.stopped }])
+      const full: ChatMessage[] = [
+        ...history,
+        { id: newChatId(), role: 'assistant', text: done.answer, thinking: done.thinking || undefined, stats: done.stats, stopped: done.stopped, createdAt: Date.now() },
+      ]
+      messagesRef.current = full
+      setMessages(full)
+      persist(full, forSession, sentWith)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      if (forSession === session.current) setError(errorText(err))
     }
-  }
-
-  function newChat() {
-    messages.forEach((m) => release([...(m.images ?? []), m.audio]))
-    setMessages([])
-    setError(null)
-    setLastTrimmed(0)
-    setLastDroppedAudio(0)
   }
 
   const stream = state.stream
@@ -198,7 +426,32 @@ export function ChatTab({ active, visited, cache }: Props) {
       <ModelGate source={gemmaSource(capability, state, load)} active={active} />
 
       <div className="space-y-3">
-        <Transcript messages={messages} stream={stream} ready={ready} />
+        <div className="relative grid gap-3 lg:grid-cols-[15rem_minmax(0,1fr)]">
+          <div className="flex min-w-0 items-center gap-2 lg:hidden">
+            <Button variant="outline" size="sm" onClick={() => setListOpen((o) => !o)} aria-expanded={listOpen} aria-controls="gemma-chat-list" className="gap-2">
+              <PanelLeft className="size-4" /> Chats
+            </Button>
+            <span className="min-w-0 truncate text-sm text-muted-foreground">{activeConv?.title ?? 'New chat'}</span>
+          </div>
+          <ConversationList
+            conversations={conversations}
+            activeId={activeConv?.id ?? null}
+            disabled={busy}
+            onSelect={(id) => {
+              setListOpen(false)
+              if (id !== activeRef.current?.id) void openConversation(id)
+            }}
+            onNew={() => {
+              setListOpen(false)
+              startNewChat()
+            }}
+            onRename={(id, title) => void renameConversation(id, title)}
+            onDelete={(id) => void deleteConversation(id)}
+            onClose={() => setListOpen(false)}
+            className={cn('h-[28rem]', listOpen ? 'absolute top-10 left-0 z-20 w-72 shadow-lg' : 'hidden', 'lg:static lg:flex lg:w-auto lg:shadow-none')}
+          />
+          <Transcript messages={messages} stream={stream} ready={ready} />
+        </div>
         <ErrorNote>{error ?? capture.error}</ErrorNote>
 
         {/* Fixed-height composer: the thumbnail strip takes space from the textarea, so nothing below moves. */}
@@ -347,7 +600,7 @@ export function ChatTab({ active, visited, cache }: Props) {
             Thinking
           </label>
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="outline" onClick={newChat} disabled={busy || !messages.length} className="h-9 gap-2">
+            <Button variant="outline" onClick={startNewChat} disabled={busy || (!messages.length && !activeConv)} className="h-9 gap-2">
               <MessageSquarePlus className="size-4" /> New chat
             </Button>
             {busy ? (
@@ -403,7 +656,7 @@ function Transcript({ messages, stream, ready }: { messages: ChatMessage[]; stre
       ) : (
         <>
           {messages.map((m) => (m.role === 'user' ? <UserBubble key={m.id} text={m.text} images={m.images} audio={m.audio} /> : <AssistantBubble key={m.id} message={m} />))}
-          {stream && <AssistantBubble message={{ id: 'stream', role: 'assistant', text: stream.answer, thinking: stream.thinking }} streaming />}
+          {stream && <AssistantBubble message={{ id: 'stream', role: 'assistant', text: stream.answer, thinking: stream.thinking, createdAt: 0 }} streaming />}
         </>
       )}
     </div>
