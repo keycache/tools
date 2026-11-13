@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useDeferredValue, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { Cpu, Loader2, MessageSquarePlus, Mic, PanelLeft, Paperclip, Send, Square, X } from 'lucide-react'
+import { Cpu, Loader2, Mic, PanelLeft, Paperclip, Send, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConversationList } from '@/components/edge-ai/ConversationList'
 import { ModelGate, type ModelSource } from '@/components/edge-ai/ModelGate'
@@ -513,7 +513,7 @@ export function ChatTab({ active, visited, cache }: Props) {
               setListOpen(false)
               chatsButtonRef.current?.focus()
             }}
-            className={cn('h-[28rem]', listOpen ? 'absolute top-10 left-0 z-20 w-72 shadow-lg' : 'hidden', 'lg:static lg:flex lg:w-auto lg:shadow-none')}
+            className={cn('h-112', listOpen ? 'absolute top-10 left-0 z-20 w-72 shadow-lg' : 'hidden', 'lg:static lg:flex lg:w-auto lg:shadow-none')}
           />
           <Transcript messages={messages} stream={stream} ready={ready} />
         </div>
@@ -668,9 +668,6 @@ export function ChatTab({ active, visited, cache }: Props) {
             Thinking
           </label>
           <div className="ml-auto flex items-center gap-2">
-            <Button variant="outline" onClick={startNewChat} disabled={busy || (!messages.length && !activeConv)} className="h-9 gap-2">
-              <MessageSquarePlus className="size-4" /> New chat
-            </Button>
             {busy ? (
               <Button variant="destructive" onClick={() => gemma.stop()} className="h-9 gap-2">
                 <Square className="size-4" /> Stop
@@ -718,7 +715,7 @@ function Transcript({ messages, stream, ready }: { messages: ChatMessage[]; stre
       aria-busy={!!stream}
       tabIndex={0}
       aria-label="Conversation"
-      className="h-[28rem] space-y-4 overflow-y-auto rounded-xl border p-4"
+      className="h-112 space-y-4 overflow-y-auto rounded-xl border p-4"
     >
       {!messages.length && !stream ? (
         <div className="flex h-full items-center justify-center text-center text-sm text-muted-foreground">
