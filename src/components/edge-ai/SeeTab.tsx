@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { ImageDropzone } from '@/components/ImageDropzone'
 import { EmptyNote, ErrorNote, JsonPanel, KeyValues, ProbabilityBar, RawJson, ResultTabs, Segmented, Select, Stats, Textarea } from '@/components/edge-ai/shared'
 import { cactus, useModel } from '@/lib/cactus/client'
-import { boxRect, imageToRgb, polygonPoints, type RgbImage } from '@/lib/cactus/media'
+import { MAX_IMAGE_SIDE, boxRect, imageToRgb, polygonPoints, type RgbImage } from '@/lib/cactus/media'
 import { CUSTOM_FORM_EXAMPLE, LANGUAGES, SCENE_FORM, parseJson } from '@/lib/cactus/presets'
 import stopSignUrl from '@/assets/samples/stop-sign.jpg'
 import { cn } from '@/lib/utils'
@@ -225,7 +225,11 @@ export function SeeTab() {
           )}
         </div>
 
-        <p className="order-1 text-xs text-muted-foreground lg:order-none">{image ? `${image.name} · ${image.width}×${image.height}` : ''}</p>
+        <p className="order-1 min-h-8 text-xs text-muted-foreground lg:order-none">
+          {image
+            ? `${image.name} · ${image.width}×${image.height}`
+            : `Formats: JPG, PNG, WebP, GIF (anything your browser can open). Large images are scaled to ${MAX_IMAGE_SIDE}px.`}
+        </p>
 
         <div className="order-4 space-y-2 lg:order-none">
           <p className="min-h-8 text-xs text-muted-foreground">
@@ -238,38 +242,35 @@ export function SeeTab() {
         </div>
 
         <div className="order-2 flex min-h-9 flex-wrap items-center gap-x-3 gap-y-2 lg:order-none">
-          {image && (
-            <>
-              <label className="cursor-pointer">
-                <span className="inline-flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-sm hover:bg-muted">
-                  <ImagePlus className="size-4" /> Change image
-                </span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0]
-                    e.target.value = ''
-                    if (f) void onFile(f)
-                  }}
-                />
+          {/* Always rendered (not only once an image is loaded) so this row lines up with Language/Describe. */}
+          <label className="cursor-pointer">
+            <span className="inline-flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-sm hover:bg-muted">
+              <ImagePlus className="size-4" /> {image ? 'Change image' : 'Choose image'}
+            </span>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                e.target.value = ''
+                if (f) void onFile(f)
+              }}
+            />
+          </label>
+          {res &&
+            (['masks', 'boxes', 'text'] as const).map((k) => (
+              <label key={k} className="flex items-center gap-1.5 text-sm">
+                <input type="checkbox" checked={layers[k]} onChange={(e) => setLayers({ ...layers, [k]: e.target.checked })} className="size-4 accent-primary" />
+                {k}
               </label>
-              {res &&
-                (['masks', 'boxes', 'text'] as const).map((k) => (
-                  <label key={k} className="flex items-center gap-1.5 text-sm">
-                    <input type="checkbox" checked={layers[k]} onChange={(e) => setLayers({ ...layers, [k]: e.target.checked })} className="size-4 accent-primary" />
-                    {k}
-                  </label>
-                ))}
-            </>
-          )}
+            ))}
         </div>
 
         <div className="order-5 flex flex-wrap items-center gap-3 lg:order-none">
           {mode === 'form' && (
             <>
-              <label htmlFor="mirage-preset" className="text-sm font-medium">
+              <label htmlFor="mirage-preset" className="mr-1 text-sm font-medium">
                 Preset
               </label>
               <Select id="mirage-preset" value={formPreset} onChange={(e) => void choosePreset(e.target.value as FormPreset)}>
@@ -278,7 +279,7 @@ export function SeeTab() {
               </Select>
             </>
           )}
-          <label htmlFor="mirage-lang" className="text-sm font-medium">
+          <label htmlFor="mirage-lang" className="mr-1 text-sm font-medium">
             Language
           </label>
           <Select id="mirage-lang" value={language} onChange={(e) => setLanguage(e.target.value)}>

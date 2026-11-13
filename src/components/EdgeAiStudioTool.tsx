@@ -12,20 +12,20 @@ import { formatBytes } from '@/lib/cactus/media'
 type TabId = 'act' | 'listen' | 'see'
 
 const TABS: { id: TabId; label: string; model: ModelId; icon: typeof Wand2 }[] = [
-  { id: 'act', label: 'Act', model: 'needle', icon: Wand2 },
   { id: 'listen', label: 'Listen', model: 'whistle', icon: Ear },
   { id: 'see', label: 'See', model: 'mirage', icon: Eye },
+  { id: 'act', label: 'Act', model: 'needle', icon: Wand2 },
 ]
 
 export function EdgeAiStudioTool() {
-  const [active, setActive] = useState<TabId>('act')
+  const [active, setActive] = useState<TabId>(TABS[0].id)
   const cache = useCacheInfo()
 
   return (
     <div className="space-y-6">
       <p className="text-muted-foreground">
-        Tiny AI models running entirely in your browser via WebAssembly. Turn requests into tool calls, transcribe speech,
-        and understand images — no server, no uploads, works offline once downloaded.
+        Tiny AI models running entirely in your browser via WebAssembly. Transcribe speech, understand images, and turn
+        requests into tool calls — no server, no uploads, works offline once downloaded.
       </p>
 
       <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Edge AI Studio tasks">

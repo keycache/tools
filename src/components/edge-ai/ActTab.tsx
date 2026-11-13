@@ -221,7 +221,7 @@ export function ActTab() {
         </div>
 
         <div className="order-5 flex flex-wrap items-center gap-3 lg:order-none">
-          <label htmlFor="needle-preset" className="text-sm font-medium">
+          <label htmlFor="needle-preset" className="mr-1 text-sm font-medium">
             Preset
           </label>
           <Select id="needle-preset" value={preset} onChange={(e) => choosePreset(e.target.value)}>
