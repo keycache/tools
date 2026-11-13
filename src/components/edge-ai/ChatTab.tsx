@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useDeferredValue, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Cpu, Loader2, MessageSquarePlus, Mic, Paperclip, Send, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ModelGate, type ModelSource } from '@/components/edge-ai/ModelGate'
@@ -61,6 +61,9 @@ const newId = () => `m${nextMessageId++}`
 export function ChatTab({ active, visited, cache }: Props) {
   const capability = useGemmaCapability(visited, cache.bytes)
   const state = useGemma()
+  useEffect(() => {
+    if (visited) void import('@/components/edge-ai/Markdown')
+  }, [visited])
   const device = capability?.device
   const dtype = capability?.dtype
   const load = useCallback(() => {
@@ -431,6 +434,18 @@ function UserBubble({ text, images, audio }: { text: string; images?: Attachment
   )
 }
 
+const Markdown = lazy(() => import('@/components/edge-ai/Markdown'))
+
+function AssistantText({ text }: { text: string }) {
+  // Streaming deltas arrive up to 20×/s; a deferred value keeps re-parsing interruptible so typing stays smooth.
+  const deferred = useDeferredValue(text)
+  return (
+    <Suspense fallback={<div className="whitespace-pre-wrap">{text}</div>}>
+      <Markdown text={deferred} />
+    </Suspense>
+  )
+}
+
 function AssistantBubble({ message, streaming }: { message: ChatMessage; streaming?: boolean }) {
   const { text, thinking, stats, stopped } = message
   const thinkingOnly = streaming && !!thinking && !text
@@ -445,9 +460,9 @@ function AssistantBubble({ message, streaming }: { message: ChatMessage; streami
         </details>
       )}
       {(text || !thinkingOnly) && (
-        <div className={cn('rounded-2xl rounded-bl-sm bg-muted px-4 py-2.5 text-sm whitespace-pre-wrap', streaming && !text && 'text-muted-foreground')}>
-          {text || (streaming ? <Loader2 className="size-4 animate-spin" aria-label="Generating" /> : <em>No reply.</em>)}
-          {streaming && text && <span className="ml-0.5 inline-block animate-pulse">▍</span>}
+        <div className={cn('rounded-2xl rounded-bl-sm bg-muted px-4 py-2.5 text-sm', streaming && !text && 'text-muted-foreground')}>
+          {text ? <AssistantText text={text} /> : streaming ? <Loader2 className="size-4 animate-spin" aria-label="Generating" /> : <em>No reply.</em>}
+          {streaming && text && <span className="inline-block animate-pulse">▍</span>}
         </div>
       )}
       {!streaming && (
