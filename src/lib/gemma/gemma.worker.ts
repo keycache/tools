@@ -1,6 +1,7 @@
 import { AutoProcessor, Gemma4ForConditionalGeneration, InterruptableStoppingCriteria, RawImage, TextStreamer, env } from '@huggingface/transformers'
-import { GEMMA_CONTEXT_TOKENS, GEMMA_MODEL_ID, GEMMA_REVISION, type GemmaDevice, type GemmaDtype } from './constants'
-import { classifyError, collectAudio, collectImages, limitAudio, parseOutput, toTemplateMessages, trimTurns } from './conversation'
+import { GEMMA_CONTEXT_TOKENS, GEMMA_MODEL_ID, GEMMA_REVISION, pinGemmaRevision, type GemmaDevice, type GemmaDtype } from './constants'
+import { OpfsModelCache } from './opfsCache'
+import { classifyError, describeCacheFailures, collectAudio, collectImages, limitAudio, parseOutput, toTemplateMessages, trimTurns } from './conversation'
 import type { ChatTurn, GemmaRequest, GemmaResponse, GenSettings } from './protocol'
 import { configureTransformers } from './runtime'
 
@@ -12,7 +13,32 @@ interface WorkerScope {
 const scope = self as unknown as WorkerScope
 const post = (msg: GemmaResponse) => scope.postMessage(msg)
 
-configureTransformers(env)
+const cache = new OpfsModelCache(undefined, pinGemmaRevision)
+configureTransformers(env, cache)
+
+/**
+ * Reports a lost GPU device (driver reset, GPU OOM, tab killed by the GPU process) even while idle, so the UI can
+ * offer a reload instead of failing on the next message. `destroyed` is our own dispose and is ignored.
+ */
+let watching = false
+async function watchDevice(): Promise<void> {
+  if (watching) return
+  watching = true
+  const webgpu = (env.backends.onnx as { webgpu?: { device?: Promise<GPUDevice> | GPUDevice } }).webgpu
+  const device = await Promise.race([Promise.resolve(webgpu?.device), new Promise<undefined>((r) => setTimeout(r, 2000))]).catch(() => undefined)
+  if (!device) {
+    watching = false
+    return
+  }
+  void device.lost.then((info) => {
+    watching = false
+    if (info.reason === 'destroyed') return
+    model = null
+    processor = null
+    loading = null
+    post({ id: 0, type: 'lost', message: `The GPU stopped responding${info.message ? ` (${info.message})` : ''}. Close other GPU-heavy tabs, then reload the model.` })
+  })
+}
 
 type Processor = Awaited<ReturnType<typeof AutoProcessor.from_pretrained>>
 type Model = Awaited<ReturnType<typeof Gemma4ForConditionalGeneration.from_pretrained>>
@@ -141,7 +167,8 @@ scope.onmessage = async (e: MessageEvent<GemmaRequest>) => {
     switch (msg.type) {
       case 'load':
         await load(msg.id, msg.device, msg.dtype)
-        post({ id: msg.id, type: 'ready' })
+        if (msg.device === 'webgpu') void watchDevice()
+        post({ id: msg.id, type: 'ready', cacheWarning: describeCacheFailures(cache.failures) })
         return
       case 'generate':
         if (current) {

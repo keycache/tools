@@ -46,6 +46,7 @@ export interface StoredMessage {
   audio?: StoredAudio
   stats?: GenStats
   stopped?: boolean
+  backgrounded?: boolean
   createdAt: number
 }
 

@@ -25,6 +25,8 @@ export interface GemmaState {
   progress?: { loaded: number; total: number }
   error?: string
   errorCode?: GemmaErrorCode
+  /** Loaded, but not (fully) saved to browser storage — it will download again next visit. */
+  warning?: string
   /** The in-flight generation, updated as text streams in. */
   stream: { id: number; answer: string; thinking: string } | null
 }
@@ -79,9 +81,16 @@ class GemmaClient {
         this.set({ stream: { id: msg.id, answer: msg.answer, thinking: msg.thinking } })
         return
       case 'ready':
+        if (msg.cacheWarning) this.set({ warning: msg.cacheWarning })
+        this.pending.delete(msg.id)
+        p?.resolve(undefined)
+        return
       case 'unloaded':
         this.pending.delete(msg.id)
         p?.resolve(undefined)
+        return
+      case 'lost':
+        this.fail(new GemmaError('device-lost', msg.message))
         return
       case 'done':
         this.pending.delete(msg.id)
@@ -118,7 +127,7 @@ class GemmaClient {
     if (this.state.status === 'ready') return Promise.resolve()
     if (!this.loadPromise) {
       void requestPersistentStorage()
-      this.set({ status: 'loading', progress: undefined, error: undefined, errorCode: undefined })
+      this.set({ status: 'loading', progress: undefined, error: undefined, errorCode: undefined, warning: undefined })
       this.loadPromise = this.call<void>({ type: 'load', device, dtype })
         .done.then(() => {
           this.set({ status: 'ready', progress: undefined })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { IMAGE_TOKENS, audioTokens, classifyError, collectAudio, collectImages, limitAudio, parseOutput, toTemplateMessages, trimTurns } from '@/lib/gemma/conversation'
+import { IMAGE_TOKENS, audioTokens, classifyError, describeCacheFailures, collectAudio, collectImages, limitAudio, parseOutput, toTemplateMessages, trimTurns } from '@/lib/gemma/conversation'
 import type { ChatTurn } from '@/lib/gemma/protocol'
 
 const words = (t: string) => t.split(/\s+/).filter(Boolean).length
@@ -135,5 +135,21 @@ describe('classifyError', () => {
     expect(classifyError(new Error('GPUDevice was lost: out of memory')).code).toBe('device-lost')
     expect(classifyError(new Error('Failed to fetch')).code).toBe('network')
     expect(classifyError('weird').code).toBe('unknown')
+  })
+
+  it('recognises mid-download network failures across browsers', () => {
+    for (const m of ['network error', 'NetworkError when attempting to fetch resource.', 'Load failed', 'net::ERR_INTERNET_DISCONNECTED']) {
+      expect(classifyError(new TypeError(m)).code).toBe('network')
+    }
+    expect(classifyError(new TypeError('Load failed')).message).toMatch(/files that finished downloading are kept/)
+  })
+})
+
+describe('describeCacheFailures', () => {
+  it('is silent without failures and explains quota failures', () => {
+    expect(describeCacheFailures([])).toBeUndefined()
+    const quota = Object.assign(new Error('x'), { name: 'QuotaExceededError' })
+    expect(describeCacheFailures([{ error: quota }, { error: new Error('y') }])).toMatch(/storage is full, so 2 files couldn't be saved/)
+    expect(describeCacheFailures([{ error: new Error('io') }])).toMatch(/^Loaded, but 1 file couldn't be saved/)
   })
 })

@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useDeferredValue, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useDeferredValue, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Cpu, Loader2, MessageSquarePlus, Mic, PanelLeft, Paperclip, Send, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConversationList } from '@/components/edge-ai/ConversationList'
@@ -58,10 +58,12 @@ interface ChatMessage {
   thinking?: string
   stats?: GenStats
   stopped?: boolean
+  /** The tab was hidden during generation (browsers throttle background GPU work, so tok/s is lower). */
+  backgrounded?: boolean
   createdAt: number
 }
 
-const MAX_TOKEN_OPTIONS = [256, 512, 1024, 2048]
+const MAX_TOKEN_OPTIONS = [256, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 162144, 196608]
 /** Each image costs up to ~282 tokens and a vision-encoder pass on every turn it stays in the history. */
 const MAX_IMAGES_PER_MESSAGE = 4
 const MAX_AUDIO_SAMPLES = MAX_AUDIO_SECONDS * AUDIO_SAMPLE_RATE
@@ -81,6 +83,7 @@ function toStored(m: ChatMessage, conversationId: string, index: number): Stored
     images: m.images?.map((a) => ({ blob: a.blob, name: a.name })),
     audio: m.audio && { pcm: m.audio.pcm, name: m.audio.name, seconds: m.audio.seconds, trimmed: m.audio.trimmed },
     stats: m.stats,
+    backgrounded: m.backgrounded,
     stopped: m.stopped,
     createdAt: m.createdAt,
   }
@@ -97,12 +100,43 @@ function fromStored(s: StoredMessage, track: (url: string) => string): ChatMessa
     // Only the PCM sent to the model is stored, so playback uses a WAV rebuilt from it.
     audio: s.audio && { ...s.audio, url: track(URL.createObjectURL(encodeWav(s.audio.pcm, AUDIO_SAMPLE_RATE))) },
     stats: s.stats,
+    backgrounded: s.backgrounded,
     stopped: s.stopped,
     createdAt: s.createdAt,
   }
 }
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
+
+function subscribeOnline(fn: () => void) {
+  window.addEventListener('online', fn)
+  window.addEventListener('offline', fn)
+  return () => {
+    window.removeEventListener('online', fn)
+    window.removeEventListener('offline', fn)
+  }
+}
+const useOnline = () => useSyncExternalStore(subscribeOnline, () => navigator.onLine, () => true)
+
+/** Tracks whether the page was hidden at any point while `active` is true. */
+function useHiddenWhile(active: boolean) {
+  const hidden = useRef(false)
+  useEffect(() => {
+    if (!active) return
+    hidden.current = document.hidden
+    const onChange = () => {
+      if (document.hidden) hidden.current = true
+    }
+    document.addEventListener('visibilitychange', onChange)
+    return () => document.removeEventListener('visibilitychange', onChange)
+  }, [active])
+  return hidden
+}
+
+function saveErrorText(action: string, err: unknown): string {
+  const quota = err instanceof Error && (err.name === 'QuotaExceededError' || /quota/i.test(err.message))
+  return quota ? `Browser storage is full — couldn't ${action}. Free up space or remove old chats.` : `Couldn't ${action}: ${errorText(err)}`
+}
 
 export function ChatTab({ active, visited, cache }: Props) {
   const capability = useGemmaCapability(visited, cache.bytes)
@@ -144,6 +178,11 @@ export function ChatTab({ active, visited, cache }: Props) {
 
   const ready = state.status === 'ready'
   const busy = !!state.stream
+  const online = useOnline()
+  const hiddenDuringReply = useHiddenWhile(busy)
+  /** Screen-reader announcement for finished replies (the transcript itself isn't a live region while streaming). */
+  const [announcement, setAnnouncement] = useState('')
+  const chatsButtonRef = useRef<HTMLButtonElement>(null)
 
   // --- Saved conversations -------------------------------------------------------------------------------------
   const [conversations, setConversations] = useState<StoredConversation[]>([])
@@ -291,7 +330,7 @@ export function ChatTab({ active, visited, cache }: Props) {
         setLastOpen(conv.id)
         notifyChatsChanged()
       } catch (err) {
-        setError(`Couldn't save this chat: ${errorText(err)}`)
+        setError(saveErrorText('save this chat', err))
       }
     })
   }
@@ -302,7 +341,7 @@ export function ChatTab({ active, visited, cache }: Props) {
       if (next && activeRef.current?.id === id) setActive(next)
       notifyChatsChanged()
     } catch (err) {
-      setError(`Couldn't rename the chat: ${errorText(err)}`)
+      setError(saveErrorText('rename the chat', err))
     }
   }
 
@@ -311,7 +350,7 @@ export function ChatTab({ active, visited, cache }: Props) {
       await chatStore.remove(id)
       notifyChatsChanged()
     } catch (err) {
-      setError(`Couldn't delete the chat: ${errorText(err)}`)
+      setError(saveErrorText('delete the chat', err))
     }
   }
 
@@ -409,10 +448,20 @@ export function ChatTab({ active, visited, cache }: Props) {
       setLastDroppedAudio(done.stats.droppedAudio)
       const full: ChatMessage[] = [
         ...history,
-        { id: newChatId(), role: 'assistant', text: done.answer, thinking: done.thinking || undefined, stats: done.stats, stopped: done.stopped, createdAt: Date.now() },
+        {
+          id: newChatId(),
+          role: 'assistant',
+          text: done.answer,
+          thinking: done.thinking || undefined,
+          stats: done.stats,
+          stopped: done.stopped,
+          backgrounded: hiddenDuringReply.current || undefined,
+          createdAt: Date.now(),
+        },
       ]
       messagesRef.current = full
       setMessages(full)
+      setAnnouncement(`${done.stopped ? 'Gemma stopped' : 'Gemma replied'}: ${done.answer || 'no reply'}`)
       persist(full, forSession, sentWith)
     } catch (err) {
       if (forSession === session.current) setError(errorText(err))
@@ -423,12 +472,23 @@ export function ChatTab({ active, visited, cache }: Props) {
 
   return (
     <>
-      <ModelGate source={gemmaSource(capability, state, load)} active={active} />
+      <ModelGate source={gemmaSource(capability, state, load, online)} active={active} />
+      <p className="sr-only" role="status" aria-live="polite">
+        {busy ? 'Gemma is replying…' : announcement}
+      </p>
 
       <div className="space-y-3">
         <div className="relative grid gap-3 lg:grid-cols-[15rem_minmax(0,1fr)]">
           <div className="flex min-w-0 items-center gap-2 lg:hidden">
-            <Button variant="outline" size="sm" onClick={() => setListOpen((o) => !o)} aria-expanded={listOpen} aria-controls="gemma-chat-list" className="gap-2">
+            <Button
+              ref={chatsButtonRef}
+              variant="outline"
+              size="sm"
+              onClick={() => setListOpen((o) => !o)}
+              aria-expanded={listOpen}
+              aria-controls="gemma-chat-list"
+              className="gap-2"
+            >
               <PanelLeft className="size-4" /> Chats
             </Button>
             <span className="min-w-0 truncate text-sm text-muted-foreground">{activeConv?.title ?? 'New chat'}</span>
@@ -447,7 +507,12 @@ export function ChatTab({ active, visited, cache }: Props) {
             }}
             onRename={(id, title) => void renameConversation(id, title)}
             onDelete={(id) => void deleteConversation(id)}
-            onClose={() => setListOpen(false)}
+            id="gemma-chat-list"
+            drawerOpen={listOpen}
+            onClose={() => {
+              setListOpen(false)
+              chatsButtonRef.current?.focus()
+            }}
             className={cn('h-[28rem]', listOpen ? 'absolute top-10 left-0 z-20 w-72 shadow-lg' : 'hidden', 'lg:static lg:flex lg:w-auto lg:shadow-none')}
           />
           <Transcript messages={messages} stream={stream} ready={ready} />
@@ -526,6 +591,9 @@ export function ChatTab({ active, visited, cache }: Props) {
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault()
                 void send()
+              } else if (e.key === 'Escape' && busy) {
+                e.preventDefault()
+                gemma.stop()
               }
             }}
             onPaste={(e) => {
@@ -617,7 +685,7 @@ export function ChatTab({ active, visited, cache }: Props) {
 
         <div className="flex min-h-8 flex-wrap items-start justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
           <p>
-            Enter to send · Shift+Enter for a new line · up to {MAX_IMAGES_PER_MESSAGE} images and one audio clip (≤ {MAX_AUDIO_SECONDS} s) per message.
+            Enter to send · Shift+Enter for a new line · Esc to stop · up to {MAX_IMAGES_PER_MESSAGE} images and one audio clip (≤ {MAX_AUDIO_SECONDS} s) per message.
             {lastTrimmed > 0 && ` Older messages (${lastTrimmed}) weren't sent to the model to fit its context.`}
             {lastDroppedAudio > 0 && ' Only the newest audio clip is sent to the model.'}
           </p>
@@ -646,6 +714,9 @@ function Transcript({ messages, stream, ready }: { messages: ChatMessage[]; stre
         stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40
       }}
       role="log"
+      aria-live="off"
+      aria-busy={!!stream}
+      tabIndex={0}
       aria-label="Conversation"
       className="h-[28rem] space-y-4 overflow-y-auto rounded-xl border p-4"
     >
@@ -724,6 +795,9 @@ function AssistantBubble({ message, streaming }: { message: ChatMessage; streami
           {stats && (
             <span className="tabular-nums">
               {stats.newTokens} tokens · {stats.tokensPerSec.toFixed(1)} tok/s · first token {(stats.firstTokenMs / 1000).toFixed(1)} s
+              {message.backgrounded && (
+                <span title="Browsers throttle GPU work in background tabs, so this reply was slower than usual."> · tab was in the background</span>
+              )}
             </span>
           )}
           {text && <CopyButton text={text} className="h-6 px-2 text-xs" />}
@@ -733,7 +807,7 @@ function AssistantBubble({ message, streaming }: { message: ChatMessage; streami
   )
 }
 
-function gemmaSource(capability: Capability | null, state: GemmaState, load: () => void): ModelSource {
+function gemmaSource(capability: Capability | null, state: GemmaState, load: () => void, online: boolean): ModelSource {
   const dtype = capability?.dtype ?? 'q4f16'
   const total = capability?.totalBytes || gemmaTotalBytes(dtype)
   const base: ModelSource = {
@@ -749,8 +823,9 @@ function gemmaSource(capability: Capability | null, state: GemmaState, load: () 
   if (!capability) return base
   if (capability.unsupported) return { ...base, status: 'unsupported', unsupported: capability.unsupported }
   const cached = capability.downloadBytes === 0
-  const source: ModelSource = { ...base, status: 'idle', cached, blocked: capability.blocked, load }
-  if (state.status === 'ready') return { ...source, status: 'ready' }
+  const offline = !online && !cached ? "You're offline. Connect to the internet to download Gemma — files that already finished downloading are kept." : undefined
+  const source: ModelSource = { ...base, status: 'idle', cached, blocked: offline ?? capability.blocked, load }
+  if (state.status === 'ready') return { ...source, status: 'ready', warning: state.warning }
   if (state.status === 'error') return { ...source, status: 'error', error: state.error }
   if (state.status === 'loading') {
     // Progress events cover model files only (the runtime wasm is fetched separately), and their total grows as

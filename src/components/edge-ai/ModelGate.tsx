@@ -19,6 +19,8 @@ export interface ModelSource {
   status: ModelSourceStatus
   progress?: Progress
   error?: string
+  /** Shown with the ready state, e.g. "loaded but not saved for offline use". */
+  warning?: string
   /** Fully available in browser storage (load won't download anything). */
   cached: boolean
   /** What clicking Download will fetch. */
@@ -66,11 +68,16 @@ export function ModelGate({ source, active }: Props) {
         </span>
       )}
 
-      {status === 'ready' && (
-        <span className="inline-flex items-center gap-1.5 text-sm text-emerald-600 dark:text-emerald-400">
-          <CheckCircle2 className="size-4" /> Ready · runs offline
-        </span>
-      )}
+      {status === 'ready' &&
+        (source.warning ? (
+          <span className="inline-flex items-center gap-1.5 text-sm text-amber-700 dark:text-amber-400">
+            <AlertTriangle className="size-4" /> Ready · not saved for offline use
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 text-sm text-emerald-600 dark:text-emerald-400">
+            <CheckCircle2 className="size-4" /> Ready · runs offline
+          </span>
+        ))}
 
       {status === 'loading' && <LoadingBar progress={source.progress} />}
 
@@ -88,7 +95,9 @@ export function ModelGate({ source, active }: Props) {
 
       {status === 'error' && (
         <div className="flex w-full items-center gap-3">
-          <p className="flex-1 text-sm text-destructive">{source.error}</p>
+          <p role="alert" className="flex-1 text-sm text-destructive">
+          {source.error}
+        </p>
           {load && (
             <Button variant="outline" onClick={load} className="gap-2">
               <RotateCcw className="size-4" /> Retry
@@ -97,6 +106,7 @@ export function ModelGate({ source, active }: Props) {
         </div>
       )}
 
+      {status === 'ready' && source.warning && <Notice tone="warn">{source.warning}</Notice>}
       {status === 'unsupported' && <Notice tone="warn">{source.unsupported}</Notice>}
       {status === 'idle' && source.blocked && <Notice tone="warn">{source.blocked}</Notice>}
       {status === 'idle' && !load && source.unavailableNote && <Notice>{source.unavailableNote}</Notice>}
@@ -130,14 +140,27 @@ function LoadingBar({ progress }: { progress?: Progress }) {
       : progress.fromCache
         ? 'Reading from browser storage…'
         : `Downloading ${formatBytes(progress.loaded)} / ${formatBytes(progress.total)}`
+  const phase = !progress ? 'Starting…' : done ? 'Initialising model…' : progress.fromCache ? 'Reading from browser storage…' : 'Downloading model…'
   return (
-    <div className="w-full space-y-1.5 sm:w-72" role="status" aria-live="polite">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+    <div className="w-full space-y-1.5 sm:w-72">
+      {/* Announce phase changes only; the byte counter below updates several times a second. */}
+      <span className="sr-only" role="status">
+        {phase}
+      </span>
+      <div className="flex items-center gap-2 text-xs text-muted-foreground" aria-hidden="true">
         <Loader2 className="size-3.5 animate-spin" />
         <span className="flex-1">{label}</span>
         {!done && progress && !progress.fromCache && <span className="tabular-nums">{pct}%</span>}
       </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+      <div
+        className="h-1.5 overflow-hidden rounded-full bg-muted"
+        role="progressbar"
+        aria-label={phase}
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuetext={progress && !progress.fromCache && !done ? `${pct}% · ${label}` : phase}
+      >
         <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${pct}%` }} />
       </div>
     </div>

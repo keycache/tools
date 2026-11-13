@@ -54,7 +54,7 @@ export const TOOLS: Tool[] = [
   {
     id: 'edge-ai-studio',
     name: 'Edge AI Studio',
-    description: 'Tool calling, speech-to-text and image understanding with tiny AI models running fully in your browser.',
+    description: 'Speech-to-text, image understanding, tool calling and a multimodal Gemma chat — AI models running fully in your browser, offline once downloaded.',
     component: EdgeAiStudioTool,
   },
 ]

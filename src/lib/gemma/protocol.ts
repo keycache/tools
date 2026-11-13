@@ -41,9 +41,12 @@ export type GemmaRequest =
 
 export type GemmaResponse =
   | { id: number; type: 'progress'; loaded: number; total: number }
-  | { id: number; type: 'ready' }
+  /** `cacheWarning`: loaded, but some files couldn't be saved to browser storage (they'll download again). */
+  | { id: number; type: 'ready'; cacheWarning?: string }
   /** Cumulative parsed output so far (not a delta), sent at most every ~50 ms. */
   | { id: number; type: 'stream'; answer: string; thinking: string }
   | { id: number; type: 'done'; answer: string; thinking: string; stopped: boolean; stats: GenStats }
   | { id: number; type: 'unloaded' }
   | { id: number; type: 'error'; code: GemmaErrorCode; message: string }
+  /** Unsolicited: the GPU device was lost (driver reset, OOM, …). The loaded model is unusable. */
+  | { id: 0; type: 'lost'; message: string }

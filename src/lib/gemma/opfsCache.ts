@@ -55,6 +55,11 @@ export class OpfsModelCache {
   private dir: Promise<DirLike> | null = null
   private readonly getDir: DirProvider
   private readonly normalize: (url: string) => string
+  /**
+   * Writes that failed (e.g. storage full). Transformers.js only logs a warning when `put` throws and still loads
+   * the model, so the worker reads these after loading to tell the user the model wasn't saved.
+   */
+  readonly failures: { url: string; error: unknown }[] = []
 
   /**
    * @param normalize Maps a request URL to its storage key (e.g. pins `resolve/main/` to a fixed revision),
@@ -93,10 +98,18 @@ export class OpfsModelCache {
     const name = await keyName(url)
     // Drop any previous meta first so an interrupted rewrite can't be matched against stale metadata.
     await dir.removeEntry(`${name}.meta.json`).catch(() => {})
-    const handle = await dir.getFileHandle(`${name}.bin`, { create: true })
-    const size = await writeStream(handle, response.body)
-    const meta: EntryMeta = { url, size, contentType: response.headers.get('Content-Type') }
-    await writeStream(await dir.getFileHandle(`${name}.meta.json`, { create: true }), new Response(JSON.stringify(meta)).body!)
+    try {
+      const handle = await dir.getFileHandle(`${name}.bin`, { create: true })
+      const size = await writeStream(handle, response.body)
+      const meta: EntryMeta = { url, size, contentType: response.headers.get('Content-Type') }
+      await writeStream(await dir.getFileHandle(`${name}.meta.json`, { create: true }), new Response(JSON.stringify(meta)).body!)
+    } catch (error) {
+      // Don't leave a partial (possibly GB-sized) file behind, e.g. when storage ran out mid-write.
+      await dir.removeEntry(`${name}.bin`).catch(() => {})
+      await dir.removeEntry(`${name}.meta.json`).catch(() => {})
+      this.failures.push({ url, error })
+      throw error
+    }
   }
 }
 

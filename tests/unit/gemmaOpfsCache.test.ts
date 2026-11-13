@@ -27,6 +27,8 @@ function memoryDir({ syncOnly = false, failAfterBytes = Infinity } = {}) {
       : {
           createWritable: async () => {
             const parts: Uint8Array[] = []
+            // Like real OPFS, the file exists as soon as writing starts.
+            files.set(name, parts)
             let written = 0
             return new WritableStream<Uint8Array>({
               write(chunk) {
@@ -83,6 +85,14 @@ describe('OpfsModelCache', () => {
     const cache = new OpfsModelCache(async () => dir)
     await expect(cache.put(URL_A, new Response(new Uint8Array(1000)))).rejects.toThrow()
     expect(await cache.match(URL_A)).toBeUndefined()
+  })
+
+  it('removes the partial file and records the failure when a write fails (e.g. storage full)', async () => {
+    const { dir, files } = memoryDir({ failAfterBytes: 10 })
+    const cache = new OpfsModelCache(async () => dir)
+    await expect(cache.put(URL_A, new Response(new Uint8Array(1000)))).rejects.toThrow('disk full')
+    expect([...files.keys()]).toEqual([])
+    expect(cache.failures.map((f) => f.url)).toEqual([URL_A])
   })
 
   it('rejects an entry whose file size no longer matches its metadata', async () => {

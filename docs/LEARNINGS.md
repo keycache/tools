@@ -209,3 +209,21 @@ const [selectedSound, setSelectedSound] = useState(() => {
 **Solution**: It's the test browser, not the app. The VS Code integrated browser (`Partitions/vscode-browser`) has no on-disk `File System` folder — OPFS lives in an ephemeral store with a ~10 GB quota shared by all origins. Deleted/dropped files kept counting as `usageDetails.fileSystem` (6.9 GB "ghost" usage), and switching to another port didn't help because the quota pool is shared. Phase 5 was verified on the Vite dev server with `gemma.generate` stubbed via `await import('/tools/src/lib/gemma/client.ts')` (the same module instance the app uses).
 **Missteps**: Suspected our `put` (meta removed before rewrite) and the Clear menu; a marker-file test showed reloads don't wipe OPFS. Trying a fresh origin (port 4318) — same shared quota. The first stub attempt patched an instance that Vite then replaced with its dependency-optimisation reload; check `gemma.listeners.size > 0` after reloading.
 **Key Insight**: Test large-model persistence in a regular Chrome profile; in the VS Code browser, treat OPFS as temporary and check `navigator.storage.estimate()` before assuming an app bug. Also: Playwright `press()`/`click()` don't reach this hidden page — dispatch DOM events via `evaluate`.
+
+## GitHub Pages File Limits Decide Where Model Files Live (Edge AI Studio)
+**Problem**: Edge AI Studio ships model files with a static site deployed by `gh-pages` (a git push). GitHub rejects any file over 100 MB in a push (warns above 50 MB), and a published Pages site should stay under ~1 GB.
+**Solution**: Small models live in `public/models/cactus/` (largest: `needle3.cact` 35 MB; the bundled ONNX Runtime `.wasm` is 26.9 MB). Gemma's 1.5–1.6 GB weight files can't, so they are fetched from huggingface.co (pinned revision) and cached in OPFS; only the runtime comes from this site.
+**Missteps**: None costly — but it rules out "just copy the ONNX files into `public/`", which is the first thing one tries.
+**Key Insight**: Check the largest single file before choosing hosting. Anything ≥ 50 MB should come from a model hub/CDN and be cached client-side; keep the site itself well under 1 GB.
+
+## Serve ONNX Runtime From the Site, Not jsDelivr (Transformers.js)
+**Problem**: Transformers.js silently downloads `ort-wasm-simd-threaded.asyncify.{mjs,wasm}` (27 MB) from cdn.jsdelivr.net at runtime — a third-party request the "only model files leave the site" promise didn't account for, and one more thing that must be reachable on first load.
+**Solution**: Import both files with Vite `?url` (`onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm?url` / `.mjs?url`) and set `env.backends.onnx.wasm.wasmPaths = { mjs, wasm }` (absolute URLs) in the worker before any `from_pretrained` (`src/lib/gemma/runtime.ts`). Vite emits them as hashed assets; the custom cache then stores the wasm for offline use.
+**Missteps**: Easy to miss — it only showed up in the network log of a first load. Vite emits hashed file names, so point `wasmPaths` at each file explicitly (`{ mjs, wasm }`); and the variant must match what this Transformers.js version requests (asyncify for 4.3.2).
+**Key Insight**: Audit the network log of a first load with an empty cache; libraries fetch runtimes and metadata you never asked for.
+
+## Transformers.js Swallows Cache Write Errors (Storage Full)
+**Problem**: When OPFS ran out of space mid-download, the model still loaded — Transformers.js wraps `cache.put` in `.catch(logger.warn)` for buffered responses — so the user believed Gemma was saved, the 3 GB downloaded again next visit, and a partial GB-sized `.bin` stayed on disk.
+**Solution**: `OpfsModelCache.put` deletes the partial file on any write error and records it in `failures`; after loading, the worker sends `ready{cacheWarning}` (`describeCacheFailures`) and the gate shows "Ready · not saved for offline use" with the reason.
+**Missteps**: Expected a load error (the streamed `put` path *does* propagate errors) — but with a custom cache the buffered path is used, which only warns.
+**Key Insight**: Treat "loaded" and "persisted" as separate outcomes. If a library catches errors from your plugin, record them in the plugin and report them yourself.

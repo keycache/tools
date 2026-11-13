@@ -13,7 +13,11 @@ interface Props {
   onNew: () => void
   onRename: (id: string, title: string) => void
   onDelete: (id: string) => void
+  /** Called by the drawer's close button and Escape (narrow layout). */
   onClose?: () => void
+  /** The narrow-layout drawer was just opened: move focus into it. */
+  drawerOpen?: boolean
+  id?: string
   className?: string
 }
 
@@ -27,23 +31,51 @@ function when(ts: number): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' })
 }
 
-export function ConversationList({ conversations, activeId, disabled, onSelect, onNew, onRename, onDelete, onClose, className }: Props) {
+export function ConversationList({ conversations, activeId, disabled, onSelect, onNew, onRename, onDelete, onClose, drawerOpen, id, className }: Props) {
   const [editing, setEditing] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [confirming, setConfirming] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const navRef = useRef<HTMLElement>(null)
+  /** Item whose main button should get focus back after rename / delete-confirm closes (keyboard users). */
+  const refocus = useRef<string | null>(null)
 
   useEffect(() => {
     if (editing) inputRef.current?.select()
   }, [editing])
 
-  const commit = () => {
-    if (editing && draft.trim()) onRename(editing, draft.trim())
+  useEffect(() => {
+    const target = refocus.current
+    if (!target || editing || confirming) return
+    refocus.current = null
+    const el = navRef.current?.querySelector<HTMLElement>(`[data-chat-id="${CSS.escape(target)}"]`) ?? navRef.current?.querySelector<HTMLElement>('button')
+    el?.focus()
+  }, [editing, confirming, conversations])
+
+  useEffect(() => {
+    if (drawerOpen) navRef.current?.querySelector<HTMLElement>('[aria-current="true"], [data-chat-id], button')?.focus()
+  }, [drawerOpen])
+
+  const commit = (restoreFocus = true) => {
+    if (!editing) return
+    if (draft.trim()) onRename(editing, draft.trim())
+    if (restoreFocus) refocus.current = editing
+    setEditing(null)
+  }
+  const cancelEdit = () => {
+    refocus.current = editing
     setEditing(null)
   }
 
   return (
-    <nav aria-label="Saved chats" className={cn('flex flex-col overflow-hidden rounded-xl border bg-background', className)}>
+    <nav
+      ref={navRef}
+      id={id}
+      aria-label="Saved chats"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && !editing && !confirming && onClose && drawerOpen) onClose()
+      }}
+      className={cn('flex flex-col overflow-hidden rounded-xl border bg-background', className)}>
       <div className="flex items-center gap-2 border-b p-2">
         <Button variant="outline" size="sm" onClick={onNew} disabled={disabled} className="flex-1 gap-2">
           <MessageSquarePlus className="size-4" /> New chat
@@ -74,15 +106,18 @@ export function ConversationList({ conversations, activeId, disabled, onSelect, 
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') commit()
-                      if (e.key === 'Escape') setEditing(null)
+                      if (e.key === 'Escape') {
+                        e.stopPropagation()
+                        cancelEdit()
+                      }
                     }}
-                    onBlur={commit}
+                    onBlur={() => commit(false)}
                     className="h-7 min-w-0 flex-1 rounded border bg-background px-2 text-sm outline-none focus:border-ring"
                   />
-                  <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={commit} aria-label="Save name" className="rounded p-1 hover:bg-background">
+                  <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => commit()} aria-label="Save name" className="rounded p-1 hover:bg-background">
                     <Check className="size-3.5" />
                   </button>
-                  <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => setEditing(null)} aria-label="Cancel rename" className="rounded p-1 hover:bg-background">
+                  <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={cancelEdit} aria-label="Cancel rename" className="rounded p-1 hover:bg-background">
                     <X className="size-3.5" />
                   </button>
                 </li>
@@ -90,19 +125,38 @@ export function ConversationList({ conversations, activeId, disabled, onSelect, 
             }
             if (confirming === c.id) {
               return (
-                <li key={c.id} className="flex items-center gap-1 rounded-md bg-destructive/10 p-1 pl-2 text-xs">
+                <li
+                  key={c.id}
+                  className="flex items-center gap-1 rounded-md bg-destructive/10 p-1 pl-2 text-xs"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      e.stopPropagation()
+                      refocus.current = c.id
+                      setConfirming(null)
+                    }
+                  }}
+                >
                   <span className="min-w-0 flex-1 truncate">Delete “{c.title}”?</span>
                   <Button
                     variant="destructive"
                     size="xs"
                     onClick={() => {
+                      refocus.current = '__first__'
                       setConfirming(null)
                       onDelete(c.id)
                     }}
                   >
                     Delete
                   </Button>
-                  <Button variant="ghost" size="xs" onClick={() => setConfirming(null)}>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    autoFocus
+                    onClick={() => {
+                      refocus.current = c.id
+                      setConfirming(null)
+                    }}
+                  >
                     Cancel
                   </Button>
                 </li>
@@ -112,6 +166,7 @@ export function ConversationList({ conversations, activeId, disabled, onSelect, 
               <li key={c.id} className={cn('group flex items-center rounded-md', active ? 'bg-muted' : 'hover:bg-muted/60')}>
                 <button
                   type="button"
+                  data-chat-id={c.id}
                   onClick={() => onSelect(c.id)}
                   disabled={disabled && !active}
                   aria-current={active ? 'true' : undefined}
