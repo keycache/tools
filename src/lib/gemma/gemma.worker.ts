@@ -1,6 +1,6 @@
-import { AutoProcessor, Gemma4ForConditionalGeneration, InterruptableStoppingCriteria, TextStreamer, env } from '@huggingface/transformers'
+import { AutoProcessor, Gemma4ForConditionalGeneration, InterruptableStoppingCriteria, RawImage, TextStreamer, env } from '@huggingface/transformers'
 import { GEMMA_CONTEXT_TOKENS, GEMMA_MODEL_ID, GEMMA_REVISION, type GemmaDevice, type GemmaDtype } from './constants'
-import { classifyError, parseOutput, toTemplateMessages, trimTurns } from './conversation'
+import { classifyError, collectImages, parseOutput, toTemplateMessages, trimTurns } from './conversation'
 import type { ChatTurn, GemmaRequest, GemmaResponse, GenSettings } from './protocol'
 import { configureTransformers } from './runtime'
 
@@ -66,7 +66,9 @@ async function generate(id: number, turns: ChatTurn[], settings: GenSettings): P
     add_generation_prompt: true,
     enable_thinking: settings.thinking,
   } as never) as string
-  const inputs = await processor(prompt, null, null, { add_special_tokens: false })
+  // Same order as the image placeholders in the prompt (see toTemplateMessages).
+  const images = await Promise.all(collectImages(kept).map((blob) => RawImage.fromBlob(blob)))
+  const inputs = await processor(prompt, images.length ? images : null, null, { add_special_tokens: false })
   const promptTokens = (inputs.input_ids as { dims: number[] }).dims.at(-1) ?? 0
 
   let raw = ''

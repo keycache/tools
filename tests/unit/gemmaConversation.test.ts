@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { classifyError, parseOutput, toTemplateMessages, trimTurns } from '@/lib/gemma/conversation'
+import { IMAGE_TOKENS, classifyError, collectImages, parseOutput, toTemplateMessages, trimTurns } from '@/lib/gemma/conversation'
 import type { ChatTurn } from '@/lib/gemma/protocol'
 
 const words = (t: string) => t.split(/\s+/).filter(Boolean).length
 const u = (text: string): ChatTurn => ({ role: 'user', text })
 const a = (text: string): ChatTurn => ({ role: 'assistant', text })
+const a_ = a
 
 describe('toTemplateMessages', () => {
   it('maps user turns to content parts and assistant turns to strings', () => {
@@ -12,6 +13,31 @@ describe('toTemplateMessages', () => {
       { role: 'user', content: [{ type: 'text', text: 'hi' }] },
       { role: 'assistant', content: 'hello' },
     ])
+  })
+})
+
+describe('images', () => {
+  const img = (name: string) => new Blob([name], { type: 'image/png' })
+
+  it('puts image placeholders before the text', () => {
+    expect(toTemplateMessages([{ role: 'user', text: 'what is this?', images: [img('a'), img('b')] }])).toEqual([
+      { role: 'user', content: [{ type: 'image' }, { type: 'image' }, { type: 'text', text: 'what is this?' }] },
+    ])
+  })
+
+  it('collects images across turns in prompt order', async () => {
+    const [a, b, c] = [img('a'), img('b'), img('c')]
+    const turns: ChatTurn[] = [{ role: 'user', text: '1', images: [a] }, a_('ok'), { role: 'user', text: '2', images: [b, c] }]
+    expect(collectImages(turns)).toEqual([a, b, c])
+  })
+
+  it('counts image tokens when trimming and drops images with their turn', () => {
+    const turns: ChatTurn[] = [{ role: 'user', text: 'x', images: [img('a')] }, a_('y'), u('z')]
+    const roomy = trimTurns(turns, words, IMAGE_TOKENS + 100)
+    expect(collectImages(roomy.kept)).toHaveLength(1)
+    const tight = trimTurns(turns, words, IMAGE_TOKENS - 1)
+    expect(tight.kept).toEqual([u('z')])
+    expect(collectImages(tight.kept)).toHaveLength(0)
   })
 })
 

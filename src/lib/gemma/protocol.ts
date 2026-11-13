@@ -1,9 +1,10 @@
 import type { GemmaDevice, GemmaDtype } from './constants'
 
-/** A turn as sent to the worker (Phase 1: text only). */
+/** A turn as sent to the worker. Images are already downscaled (≤ 1024 px) by the UI. */
 export interface ChatTurn {
   role: 'user' | 'assistant'
   text: string
+  images?: Blob[]
 }
 
 export interface GenSettings {

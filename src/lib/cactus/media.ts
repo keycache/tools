@@ -81,6 +81,34 @@ export interface RgbImage {
   height: number
 }
 
+const PASSTHROUGH_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
+
+/**
+ * Prepares an image attachment: keeps small JPEG/PNG/WebP files as-is, otherwise downscales to `maxSide` and
+ * re-encodes as JPEG (transparency flattened onto white). Keeps chat history and worker messages small; the model
+ * resizes to ≤ ~800 px anyway.
+ */
+export async function prepareImage(file: Blob, maxSide = MAX_IMAGE_SIDE): Promise<{ blob: Blob; width: number; height: number }> {
+  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
+  try {
+    const { width, height } = fitWithin(bitmap.width, bitmap.height, maxSide)
+    if (width === bitmap.width && height === bitmap.height && PASSTHROUGH_TYPES.has(file.type)) return { blob: file, width, height }
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('Canvas 2D is not available')
+    ctx.fillStyle = '#fff'
+    ctx.fillRect(0, 0, width, height)
+    ctx.drawImage(bitmap, 0, 0, width, height)
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9))
+    if (!blob) throw new Error('Could not encode the image')
+    return { blob, width, height }
+  } finally {
+    bitmap.close()
+  }
+}
+
 export async function imageToRgb(file: Blob, maxSide = MAX_IMAGE_SIDE): Promise<RgbImage> {
   const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
   try {

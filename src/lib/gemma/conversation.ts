@@ -2,26 +2,42 @@ import type { ChatTurn, GemmaErrorCode } from './protocol'
 
 /** Gemma 4 chat-template message (what `processor.apply_chat_template` expects). */
 export type TemplateMessage =
-  | { role: 'user'; content: { type: 'text'; text: string }[] }
+  | { role: 'user'; content: ({ type: 'image' } | { type: 'text'; text: string })[] }
   | { role: 'assistant'; content: string }
 
+/**
+ * Images go before the text (the model card's order). The processor later replaces each image placeholder, in
+ * order, with that image's soft tokens — so images must be passed to it in the same order (see `collectImages`).
+ */
 export function toTemplateMessages(turns: ChatTurn[]): TemplateMessage[] {
-  return turns.map((t) => (t.role === 'user' ? { role: 'user', content: [{ type: 'text', text: t.text }] } : { role: 'assistant', content: t.text }))
+  return turns.map((t) =>
+    t.role === 'user'
+      ? { role: 'user', content: [...(t.images ?? []).map(() => ({ type: 'image' as const })), { type: 'text' as const, text: t.text }] }
+      : { role: 'assistant', content: t.text },
+  )
+}
+
+/** All images of the given turns, in prompt order. */
+export function collectImages(turns: ChatTurn[]): Blob[] {
+  return turns.flatMap((t) => (t.role === 'user' ? (t.images ?? []) : []))
 }
 
 /** Per-turn template overhead (`<|turn>role\n … <turn|>\n`) on top of the text's own tokens. */
 const TURN_OVERHEAD_TOKENS = 6
+/** Gemma 4 vision: at most 280 soft tokens per image (`max_soft_tokens`) + begin/end-of-image markers. */
+export const IMAGE_TOKENS = 282
 
 /**
  * Keeps the newest turns that fit in `budget` tokens. The latest turn (the user's question) is always kept, and
- * the kept history always starts with a user turn so the template stays well-formed.
+ * the kept history always starts with a user turn so the template stays well-formed. Images count IMAGE_TOKENS
+ * each, and are dropped together with their turn.
  */
 export function trimTurns(turns: ChatTurn[], countTokens: (text: string) => number, budget: number): { kept: ChatTurn[]; dropped: number } {
   if (!turns.length) return { kept: [], dropped: 0 }
   let used = 0
   let start = turns.length
   for (let i = turns.length - 1; i >= 0; i--) {
-    const cost = countTokens(turns[i].text) + TURN_OVERHEAD_TOKENS
+    const cost = countTokens(turns[i].text) + TURN_OVERHEAD_TOKENS + (turns[i].images?.length ?? 0) * IMAGE_TOKENS
     if (i < turns.length - 1 && used + cost > budget) break
     used += cost
     start = i
