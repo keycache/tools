@@ -67,8 +67,8 @@ describe('detectCapability', () => {
 })
 
 describe('gemma sizes', () => {
-  it('excludes the audio encoder unless requested', () => {
-    expect(gemmaTotalBytes('q4f16', { withAudio: true }) - gemmaTotalBytes('q4f16')).toBe(GEMMA_SIZES.q4f16.audio)
+  it('includes the audio encoder by default (Transformers.js loads every session together)', () => {
+    expect(gemmaTotalBytes('q4f16') - gemmaTotalBytes('q4f16', { withAudio: false })).toBe(GEMMA_SIZES.q4f16.audio)
     expect(gemmaTotalBytes('q4f16')).toBeGreaterThan(3 * 1000 ** 3)
     expect(gemmaTotalBytes('q4f16')).toBeGreaterThan(ORT_RUNTIME_BYTES)
   })
@@ -130,9 +130,11 @@ describe('transformers runtime config', () => {
     expect(ORT_RUNTIME_URLS.mjs).toMatch(/ort-wasm-simd-threaded\.asyncify[^/]*\.mjs$/)
     expect(ORT_RUNTIME_URLS.wasm).not.toMatch(/jsdelivr/)
 
-    const env = { allowLocalModels: true, allowRemoteModels: false, useBrowserCache: false, backends: { onnx: { wasm: {} } } }
-    configureTransformers(env as never)
-    expect(env).toMatchObject({ allowLocalModels: false, allowRemoteModels: true, useBrowserCache: true })
+    const env = { allowLocalModels: true, allowRemoteModels: false, useBrowserCache: true, useCustomCache: false, customCache: null, backends: { onnx: { wasm: {} } } }
+    const cache = { match: async () => undefined, put: async () => {} }
+    configureTransformers(env as never, cache)
+    expect(env).toMatchObject({ allowLocalModels: false, allowRemoteModels: true, useBrowserCache: false, useCustomCache: true })
+    expect(env.customCache).toBe(cache)
     expect(env.backends.onnx.wasm).toEqual({ wasmPaths: ORT_RUNTIME_URLS })
   })
 })

@@ -186,3 +186,20 @@ const [selectedSound, setSelectedSound] = useState(() => {
 **Second cause (the one actually reported)**: "the tab" meant the Clock tool's own Timer tab, not the browser tab. `ClockTool` rendered panels with `activeTab === 'timer' && <TimerTab/>`, so switching to Stopwatch/Alarm *unmounted* the timer and killed its interval (and its state). Fix: keep every panel mounted and toggle the `hidden` attribute; a ringing timer/alarm calls `onAlert` so the parent switches to its tab (otherwise Dismiss would be hidden).
 
 **Key Insight**: Anything that must keep running (timers, alarms, recordings) can't live in a conditionally-rendered component. Also: browsers throttle timers in *hidden* tabs (≥1s; Chrome's intensive throttling ~1/min for chained timers after ~5 min hidden). A blurred-but-visible window isn't throttled, which is why it "worked" there. Tick counting is only correct if every tick fires; wall-clock math is correct no matter how often ticks fire.
+
+---
+
+## Multi-GB Models in the Browser: Cache Storage Fails, Use OPFS (Gemma Chat)
+
+**Problem**: Gemma 4 E2B (~3.2 GB) loaded fine, but every reload re-downloaded ~3 GB. The console showed `Unable to add response to browser cache: UnknownError: Failed to execute 'put' on 'Cache': Unexpected internal error.` for exactly the two largest files (1.52 GB and 1.59 GB). Then, with caching fixed, loading **offline** still failed with "Failed to fetch".
+
+**Solution**:
+1. Store model files in the **Origin Private File System** via Transformers.js's custom-cache hook: `env.useBrowserCache = false; env.useCustomCache = true; env.customCache = new OpfsModelCache(...)` (`src/lib/gemma/opfsCache.ts`, only `match`/`put` needed). Stream to disk and write a small `.meta.json` last so partial files are never served.
+2. Map `resolve/main/` URLs to the pinned revision inside the cache (`pinGemmaRevision`), because Transformers.js 4.3.2's `get_tokenizer_files()` probes `tokenizer_config.json` without passing `revision`.
+
+**Missteps**:
+1. Assumed "it's a quota problem" — quota was 10.5 GB with ~9 GB free.
+2. Tried streaming the body into `cache.put` (`new Response(ReadableStream)`) instead of one big buffer — Chromium rejected the 1.6 GB entry the same way. A quick in-page probe (Cache API buffer vs stream vs OPFS, same 1.6 GB) settled it: only OPFS worked.
+3. A normal online reload looked fine (13 s, model from storage) — only blocking huggingface.co revealed the stray `resolve/main/tokenizer_config.json` request that breaks offline use.
+
+**Key Insight**: Cache Storage is fine for tens of MB (the Cactus models) but not for single files in the GB range; OPFS is the right store for large model weights. And "works offline" must be tested by actually blocking the network — libraries can make small metadata requests that bypass caches.

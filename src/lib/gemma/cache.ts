@@ -1,11 +1,15 @@
 import { GEMMA_MODEL_ID } from './constants'
+import { clearOpfsEntries, isOpfsSupported, listOpfsEntries } from './opfsCache'
 
-/** Cache Storage names used by Transformers.js 4.x (`env.cacheKey` and its experimental hash cache). */
+/**
+ * Cache Storage names Transformers.js uses by default. We store models in OPFS instead (opfsCache.ts), but older
+ * builds/sessions may have left small entries here, so they're still counted and cleared.
+ */
 export const TRANSFORMERS_CACHE = 'transformers-cache'
 export const TRANSFORMERS_CACHES = [TRANSFORMERS_CACHE, 'experimental_transformers-hash-cache']
 
 export interface GemmaCacheInfo {
-  /** Everything Transformers.js has cached (model files + ONNX runtime wasm). */
+  /** Everything stored for Gemma (model files + ONNX runtime wasm). */
   bytes: number
   /** Only files belonging to the Gemma repo. */
   modelBytes: number
@@ -13,6 +17,7 @@ export interface GemmaCacheInfo {
 }
 
 const EMPTY: GemmaCacheInfo = { bytes: 0, modelBytes: 0, files: 0 }
+const isGemmaUrl = (url: string) => url.includes(`/${GEMMA_MODEL_ID}/resolve/`)
 
 async function entrySize(res: Response): Promise<number> {
   const header = Number(res.headers.get('Content-Length'))
@@ -21,8 +26,7 @@ async function entrySize(res: Response): Promise<number> {
   return (await res.blob()).size
 }
 
-/** Sizes of what Transformers.js has stored. Read-only: never creates a cache. */
-export async function getGemmaCacheInfo(): Promise<GemmaCacheInfo> {
+async function legacyCacheInfo(): Promise<GemmaCacheInfo> {
   if (typeof caches === 'undefined') return EMPTY
   if (!(await caches.has(TRANSFORMERS_CACHE).catch(() => false))) return EMPTY
   const cache = await caches.open(TRANSFORMERS_CACHE)
@@ -33,12 +37,30 @@ export async function getGemmaCacheInfo(): Promise<GemmaCacheInfo> {
     const size = await entrySize(res)
     info.bytes += size
     info.files++
-    if (req.url.includes(`/${GEMMA_MODEL_ID}/resolve/`)) info.modelBytes += size
+    if (isGemmaUrl(req.url)) info.modelBytes += size
   }
   return info
 }
 
+async function opfsInfo(): Promise<GemmaCacheInfo> {
+  if (!isOpfsSupported()) return EMPTY
+  const info = { ...EMPTY }
+  for (const e of await listOpfsEntries()) {
+    info.bytes += e.size
+    info.files++
+    if (isGemmaUrl(e.url)) info.modelBytes += e.size
+  }
+  return info
+}
+
+/** Sizes of what is stored for Gemma (OPFS + any legacy Cache Storage entries). */
+export async function getGemmaCacheInfo(): Promise<GemmaCacheInfo> {
+  const [a, b] = await Promise.all([opfsInfo().catch(() => EMPTY), legacyCacheInfo().catch(() => EMPTY)])
+  return { bytes: a.bytes + b.bytes, modelBytes: a.modelBytes + b.modelBytes, files: a.files + b.files }
+}
+
 export async function clearGemmaCache(): Promise<void> {
+  await clearOpfsEntries()
   if (typeof caches === 'undefined') return
   await Promise.all(TRANSFORMERS_CACHES.map((name) => caches.delete(name)))
 }
