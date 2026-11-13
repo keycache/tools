@@ -5,6 +5,8 @@ export interface ChatTurn {
   role: 'user' | 'assistant'
   text: string
   images?: Blob[]
+  /** 16 kHz mono PCM, ≤ 30 s. Only the newest clip in a conversation reaches the model (see limitAudio). */
+  audio?: Float32Array
 }
 
 export interface GenSettings {
@@ -25,6 +27,8 @@ export interface GenStats {
   tokensPerSec: number
   /** Older turns left out of the prompt to fit the context budget. */
   trimmedTurns: number
+  /** Older audio clips not sent (the processor accepts one clip per prompt). */
+  droppedAudio: number
 }
 
 export type GemmaErrorCode = 'unsupported' | 'quota' | 'network' | 'device-lost' | 'busy' | 'not-loaded' | 'unknown'

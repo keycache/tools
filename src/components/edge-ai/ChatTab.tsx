@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Cpu, ImagePlus, Loader2, MessageSquarePlus, Send, Square, X } from 'lucide-react'
+import { Cpu, Loader2, MessageSquarePlus, Mic, Paperclip, Send, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ModelGate, type ModelSource } from '@/components/edge-ai/ModelGate'
 import { CopyButton, ErrorNote, Select } from '@/components/edge-ai/shared'
-import { formatBytes, prepareImage } from '@/lib/cactus/media'
+import { useAudioCapture, type CapturedAudio } from '@/components/edge-ai/useAudioCapture'
+import { AUDIO_ACCEPT, formatBytes, isAudioFile, prepareImage } from '@/lib/cactus/media'
+import { AUDIO_SAMPLE_RATE, MAX_AUDIO_SECONDS } from '@/lib/gemma/conversation'
 import type { Capability } from '@/lib/gemma/capability'
 import { gemma, useGemma, type GemmaState } from '@/lib/gemma/client'
 import { GEMMA_MODEL_ID, ORT_RUNTIME_BYTES, gemmaTotalBytes } from '@/lib/gemma/constants'
@@ -27,11 +29,21 @@ interface Attachment {
   name: string
 }
 
+interface AudioClip {
+  pcm: Float32Array
+  url: string
+  name: string
+  seconds: number
+  /** Longer than the model's 30 s limit; only the start is kept. */
+  trimmed: boolean
+}
+
 interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
   text: string
   images?: Attachment[]
+  audio?: AudioClip
   thinking?: string
   stats?: GenStats
   stopped?: boolean
@@ -40,6 +52,7 @@ interface ChatMessage {
 const MAX_TOKEN_OPTIONS = [256, 512, 1024, 2048]
 /** Each image costs up to ~282 tokens and a vision-encoder pass on every turn it stays in the history. */
 const MAX_IMAGES_PER_MESSAGE = 4
+const MAX_AUDIO_SAMPLES = MAX_AUDIO_SECONDS * AUDIO_SAMPLE_RATE
 const DEFAULT_SETTINGS: GenSettings = { temperature: 0, topP: 0.95, maxNewTokens: 512, thinking: false }
 
 let nextMessageId = 1
@@ -59,6 +72,8 @@ export function ChatTab({ active, visited, cache }: Props) {
   const [settings, setSettings] = useState<GenSettings>(DEFAULT_SETTINGS)
   const [error, setError] = useState<string | null>(null)
   const [lastTrimmed, setLastTrimmed] = useState(0)
+  const [lastDroppedAudio, setLastDroppedAudio] = useState(0)
+  const [audioClip, setAudioClip] = useState<AudioClip | null>(null)
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [preparing, setPreparing] = useState(false)
   const [dragging, setDragging] = useState(false)
@@ -70,31 +85,57 @@ export function ChatTab({ active, visited, cache }: Props) {
     const live = urls.current
     return () => live.forEach((u) => URL.revokeObjectURL(u))
   }, [])
-  const release = (items: Attachment[] = []) =>
+  const release = (items: ({ url: string } | undefined)[] = []) =>
     items.forEach((a) => {
+      if (!a) return
       URL.revokeObjectURL(a.url)
       urls.current.delete(a.url)
     })
 
   const ready = state.status === 'ready'
   const busy = !!state.stream
-  const canSend = ready && !busy && !preparing && (!!input.trim() || attachments.length > 0)
 
-  async function addImages(files: File[]) {
+  // Recording / audio-file decoding (16 kHz mono PCM), shared with the Listen tab.
+  const capture = useAudioCapture((clip: CapturedAudio) => {
+    urls.current.add(clip.url)
+    const trimmed = clip.pcm.length > MAX_AUDIO_SAMPLES
+    setAudioClip((old) => {
+      release([old ?? undefined])
+      return {
+        pcm: trimmed ? clip.pcm.slice(0, MAX_AUDIO_SAMPLES) : clip.pcm,
+        url: clip.url,
+        name: clip.name,
+        seconds: Math.min(clip.seconds, MAX_AUDIO_SECONDS),
+        trimmed,
+      }
+    })
+  }, !ready || busy)
+
+  const canSend = ready && !busy && !preparing && !capture.busy && !capture.recording && (!!input.trim() || attachments.length > 0 || !!audioClip)
+
+  /** Routes dropped / pasted / picked files: images to the strip, the first audio file to the audio slot. */
+  function addFiles(files: File[]) {
     const images = files.filter((f) => f.type.startsWith('image/'))
+    const audio = files.filter((f) => !f.type.startsWith('image/') && isAudioFile(f))
     const room = MAX_IMAGES_PER_MESSAGE - attachments.length
     setError(
-      images.length < files.length
-        ? 'Only images can be attached (audio arrives in a later update).'
+      images.length + audio.length < files.length
+        ? 'Only images and audio can be attached.'
         : images.length > room
           ? `Up to ${MAX_IMAGES_PER_MESSAGE} images per message.`
-          : null,
+          : audio.length > 1
+            ? 'One audio clip per message — the first one was attached.'
+            : null,
     )
-    if (!images.length || room <= 0) return
+    if (audio.length) capture.handleFiles([audio[0]])
+    if (images.length && room > 0) void addImages(images.slice(0, room))
+  }
+
+  async function addImages(images: File[]) {
     setPreparing(true)
     try {
       const prepared = await Promise.all(
-        images.slice(0, room).map(async (file) => {
+        images.map(async (file) => {
           const { blob } = await prepareImage(file)
           const url = URL.createObjectURL(blob)
           urls.current.add(url)
@@ -117,17 +158,22 @@ export function ChatTab({ active, visited, cache }: Props) {
 
   async function send() {
     if (!canSend) return
-    const history: ChatMessage[] = [...messages, { id: newId(), role: 'user', text: input.trim(), images: attachments.length ? attachments : undefined }]
+    const history: ChatMessage[] = [
+      ...messages,
+      { id: newId(), role: 'user', text: input.trim(), images: attachments.length ? attachments : undefined, audio: audioClip ?? undefined },
+    ]
     setMessages(history)
     setInput('')
     setAttachments([])
+    setAudioClip(null)
     setError(null)
     try {
       const done = await gemma.generate(
-        history.map((m) => ({ role: m.role, text: m.text, images: m.images?.map((i) => i.blob) })),
+        history.map((m) => ({ role: m.role, text: m.text, images: m.images?.map((i) => i.blob), audio: m.audio?.pcm })),
         settings,
       )
       setLastTrimmed(done.stats.trimmedTurns)
+      setLastDroppedAudio(done.stats.droppedAudio)
       setMessages((h) => [...h, { id: newId(), role: 'assistant', text: done.answer, thinking: done.thinking || undefined, stats: done.stats, stopped: done.stopped }])
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -135,10 +181,11 @@ export function ChatTab({ active, visited, cache }: Props) {
   }
 
   function newChat() {
-    messages.forEach((m) => release(m.images))
+    messages.forEach((m) => release([...(m.images ?? []), m.audio]))
     setMessages([])
     setError(null)
     setLastTrimmed(0)
+    setLastDroppedAudio(0)
   }
 
   const stream = state.stream
@@ -149,7 +196,7 @@ export function ChatTab({ active, visited, cache }: Props) {
 
       <div className="space-y-3">
         <Transcript messages={messages} stream={stream} ready={ready} />
-        <ErrorNote>{error}</ErrorNote>
+        <ErrorNote>{error ?? capture.error}</ErrorNote>
 
         {/* Fixed-height composer: the thumbnail strip takes space from the textarea, so nothing below moves. */}
         <div
@@ -169,11 +216,33 @@ export function ChatTab({ active, visited, cache }: Props) {
           onDrop={(e) => {
             e.preventDefault()
             setDragging(false)
-            if (ready && !busy) void addImages([...e.dataTransfer.files])
+            if (ready && !busy) addFiles([...e.dataTransfer.files])
           }}
         >
-          {(attachments.length > 0 || preparing) && (
-            <ul className="flex h-16 shrink-0 items-center gap-2 overflow-x-auto px-2 pt-2" aria-label="Attached images">
+          {(attachments.length > 0 || preparing || !!audioClip || capture.busy) && (
+            <ul className="flex h-16 shrink-0 items-center gap-2 overflow-x-auto px-2 pt-2" aria-label="Attachments">
+              {audioClip && (
+                <li className="flex h-14 shrink-0 items-center gap-2 rounded-md border bg-muted/40 pr-1 pl-3 text-xs">
+                  <Mic className="size-4 text-muted-foreground" />
+                  <span className="max-w-40 truncate" title={audioClip.name}>
+                    {audioClip.name}
+                  </span>
+                  <span className="tabular-nums text-muted-foreground">
+                    {audioClip.seconds.toFixed(1)}s{audioClip.trimmed && ' (first 30 s)'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      release([audioClip])
+                      setAudioClip(null)
+                    }}
+                    aria-label={`Remove ${audioClip.name}`}
+                    className="rounded-full p-0.5 hover:bg-muted"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </li>
+              )}
               {attachments.map((a) => (
                 <li key={a.id} className="relative shrink-0">
                   <img src={a.url} alt={a.name} className="size-14 rounded-md border object-cover" />
@@ -187,7 +256,7 @@ export function ChatTab({ active, visited, cache }: Props) {
                   </button>
                 </li>
               ))}
-              {preparing && <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Preparing image" />}
+              {(preparing || capture.busy) && <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Preparing attachment" />}
             </ul>
           )}
           <label htmlFor="gemma-input" className="sr-only">
@@ -204,39 +273,46 @@ export function ChatTab({ active, visited, cache }: Props) {
               }
             }}
             onPaste={(e) => {
-              const files = [...e.clipboardData.files].filter((f) => f.type.startsWith('image/'))
+              const files = [...e.clipboardData.files]
               if (files.length) {
                 e.preventDefault()
-                void addImages(files)
+                addFiles(files)
               }
             }}
-            placeholder={ready ? 'Ask Gemma anything… (drop or paste images to ask about them)' : 'Load Gemma above to start chatting.'}
+            placeholder={ready ? 'Ask Gemma anything… (drop or paste images or audio to ask about them)' : 'Load Gemma above to start chatting.'}
             disabled={!ready}
             className="min-h-0 w-full flex-1 resize-none bg-transparent px-3 py-2 text-sm outline-none"
           />
         </div>
 
         <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-          <Button
-            variant="outline"
-            onClick={() => fileRef.current?.click()}
-            disabled={!ready || busy || preparing || attachments.length >= MAX_IMAGES_PER_MESSAGE}
-            className="h-9 gap-2"
-          >
-            <ImagePlus className="size-4" /> Attach image
-          </Button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              const files = [...(e.target.files ?? [])]
-              e.target.value = ''
-              void addImages(files)
-            }}
-          />
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={!ready || busy || preparing || capture.recording} className="h-9 gap-2">
+              <Paperclip className="size-4" /> Attach
+            </Button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept={`image/*,${AUDIO_ACCEPT}`}
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const files = [...(e.target.files ?? [])]
+                e.target.value = ''
+                addFiles(files)
+              }}
+            />
+            <Button
+              variant={capture.recording ? 'destructive' : 'outline'}
+              onClick={() => void capture.toggleRecording()}
+              disabled={!ready || busy || capture.busy}
+              aria-pressed={capture.recording}
+              className="h-9 gap-2"
+            >
+              {capture.recording ? <Square className="size-4" /> : <Mic className="size-4" />}
+              {capture.recording ? `Stop · ${capture.elapsed.toFixed(1)}s` : 'Record'}
+            </Button>
+          </div>
           <label className="flex items-center gap-2 text-sm">
             <span className="font-medium">Temperature</span>
             <input
@@ -285,8 +361,9 @@ export function ChatTab({ active, visited, cache }: Props) {
 
         <div className="flex min-h-8 flex-wrap items-start justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
           <p>
-            Enter to send · Shift+Enter for a new line · up to {MAX_IMAGES_PER_MESSAGE} images per message.
+            Enter to send · Shift+Enter for a new line · up to {MAX_IMAGES_PER_MESSAGE} images and one audio clip (≤ {MAX_AUDIO_SECONDS} s) per message.
             {lastTrimmed > 0 && ` Older messages (${lastTrimmed}) weren't sent to the model to fit its context.`}
+            {lastDroppedAudio > 0 && ' Only the newest audio clip is sent to the model.'}
           </p>
           {capability && <DeviceSummary capability={capability} />}
         </div>
@@ -322,7 +399,7 @@ function Transcript({ messages, stream, ready }: { messages: ChatMessage[]; stre
         </div>
       ) : (
         <>
-          {messages.map((m) => (m.role === 'user' ? <UserBubble key={m.id} text={m.text} images={m.images} /> : <AssistantBubble key={m.id} message={m} />))}
+          {messages.map((m) => (m.role === 'user' ? <UserBubble key={m.id} text={m.text} images={m.images} audio={m.audio} /> : <AssistantBubble key={m.id} message={m} />))}
           {stream && <AssistantBubble message={{ id: 'stream', role: 'assistant', text: stream.answer, thinking: stream.thinking }} streaming />}
         </>
       )}
@@ -330,9 +407,16 @@ function Transcript({ messages, stream, ready }: { messages: ChatMessage[]; stre
   )
 }
 
-function UserBubble({ text, images }: { text: string; images?: Attachment[] }) {
+function UserBubble({ text, images, audio }: { text: string; images?: Attachment[]; audio?: AudioClip }) {
   return (
     <div className="ml-auto flex max-w-[85%] flex-col items-end gap-1.5">
+      {audio && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Mic className="size-3.5" />
+          <span className="max-w-40 truncate">{audio.name}</span>
+          <audio src={audio.url} controls preload="metadata" className="h-8 w-60" aria-label={`Audio: ${audio.name}`} />
+        </div>
+      )}
       {images && (
         <div className="flex flex-wrap justify-end gap-1.5">
           {images.map((img) => (

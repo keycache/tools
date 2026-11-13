@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { IMAGE_TOKENS, classifyError, collectImages, parseOutput, toTemplateMessages, trimTurns } from '@/lib/gemma/conversation'
+import { IMAGE_TOKENS, audioTokens, classifyError, collectAudio, collectImages, limitAudio, parseOutput, toTemplateMessages, trimTurns } from '@/lib/gemma/conversation'
 import type { ChatTurn } from '@/lib/gemma/protocol'
 
 const words = (t: string) => t.split(/\s+/).filter(Boolean).length
@@ -38,6 +38,39 @@ describe('images', () => {
     const tight = trimTurns(turns, words, IMAGE_TOKENS - 1)
     expect(tight.kept).toEqual([u('z')])
     expect(collectImages(tight.kept)).toHaveLength(0)
+  })
+})
+
+describe('audio', () => {
+  const pcm = (seconds: number) => new Float32Array(seconds * 16000)
+
+  it('orders image, then audio, then text', () => {
+    const turn: ChatTurn = { role: 'user', text: 'what?', images: [new Blob(['x'])], audio: pcm(1) }
+    expect(toTemplateMessages([turn])[0]).toEqual({ role: 'user', content: [{ type: 'image' }, { type: 'audio' }, { type: 'text', text: 'what?' }] })
+  })
+
+  it('keeps only the newest clip (the processor takes one per prompt)', () => {
+    const [x, y] = [pcm(1), pcm(2)]
+    const turns: ChatTurn[] = [{ role: 'user', text: 'a', audio: x }, a('ok'), { role: 'user', text: 'b', audio: y }]
+    const { turns: limited, dropped } = limitAudio(turns)
+    expect(dropped).toBe(1)
+    expect(limited[0]).toEqual({ role: 'user', text: 'a', audio: undefined })
+    expect(collectAudio(limited)).toBe(y)
+    expect(turns[0].audio).toBe(x) // input not mutated
+  })
+
+  it('matches the processor token count and caps at 30 s', () => {
+    // 1 s at 16 kHz: 99 mel frames → 50 → 25 tokens, +2 markers
+    expect(audioTokens(16000)).toBe(27)
+    expect(audioTokens(16000 * 30)).toBe(752)
+    expect(audioTokens(16000 * 60)).toBe(752)
+    expect(audioTokens(10)).toBe(0)
+  })
+
+  it('counts audio tokens when trimming', () => {
+    const turns: ChatTurn[] = [{ role: 'user', text: 'x', audio: pcm(30) }, a('y'), u('z')]
+    expect(trimTurns(turns, words, 100).kept).toEqual([u('z')])
+    expect(trimTurns(turns, words, 800).kept).toHaveLength(3)
   })
 })
 

@@ -60,7 +60,7 @@ export function useAudioCapture(onAudio: (audio: CapturedAudio) => void, disable
     }
   }
 
-  function handleFiles(files: FileList | null | undefined) {
+  function handleFiles(files: ArrayLike<File> | null | undefined) {
     const file = files?.[0]
     if (!file) return
     if (!isAudioFile(file)) {

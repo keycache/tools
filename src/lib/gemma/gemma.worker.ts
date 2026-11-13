@@ -1,6 +1,6 @@
 import { AutoProcessor, Gemma4ForConditionalGeneration, InterruptableStoppingCriteria, RawImage, TextStreamer, env } from '@huggingface/transformers'
 import { GEMMA_CONTEXT_TOKENS, GEMMA_MODEL_ID, GEMMA_REVISION, type GemmaDevice, type GemmaDtype } from './constants'
-import { classifyError, collectImages, parseOutput, toTemplateMessages, trimTurns } from './conversation'
+import { classifyError, collectAudio, collectImages, limitAudio, parseOutput, toTemplateMessages, trimTurns } from './conversation'
 import type { ChatTurn, GemmaRequest, GemmaResponse, GenSettings } from './protocol'
 import { configureTransformers } from './runtime'
 
@@ -60,7 +60,8 @@ async function generate(id: number, turns: ChatTurn[], settings: GenSettings): P
   const started = performance.now()
   const tokenizer = processor.tokenizer!
   const budget = GEMMA_CONTEXT_TOKENS - settings.maxNewTokens
-  const { kept, dropped } = trimTurns(turns, (t) => tokenizer.encode(t).length, budget)
+  const limited = limitAudio(turns)
+  const { kept, dropped } = trimTurns(limited.turns, (t) => tokenizer.encode(t).length, budget)
 
   const prompt = processor.apply_chat_template(toTemplateMessages(kept) as never, {
     add_generation_prompt: true,
@@ -68,7 +69,8 @@ async function generate(id: number, turns: ChatTurn[], settings: GenSettings): P
   } as never) as string
   // Same order as the image placeholders in the prompt (see toTemplateMessages).
   const images = await Promise.all(collectImages(kept).map((blob) => RawImage.fromBlob(blob)))
-  const inputs = await processor(prompt, images.length ? images : null, null, { add_special_tokens: false })
+  const audio = collectAudio(kept)
+  const inputs = await processor(prompt, images.length ? images : null, audio ? [audio] : null, { add_special_tokens: false })
   const promptTokens = (inputs.input_ids as { dims: number[] }).dims.at(-1) ?? 0
 
   let raw = ''
@@ -128,6 +130,7 @@ async function generate(id: number, turns: ChatTurn[], settings: GenSettings): P
       firstTokenMs: firstTokenAt ? firstTokenAt - started : ms,
       tokensPerSec: decodeMs > 0 && newTokens > 1 ? ((newTokens - 1) / decodeMs) * 1000 : 0,
       trimmedTurns: dropped,
+      droppedAudio: limited.dropped,
     },
   })
 }
