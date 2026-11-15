@@ -23,8 +23,10 @@ export interface ChunkStats {
   chars: number
   /** Speech tokens generated (≈ 25 per second of audio). */
   speechTokens: number
-  /** True when generation stopped at the token cap — the audio is probably cut off. */
+  /** True when generation stopped at the token cap — the audio is probably cut off (even after a re-split). */
   hitCap: boolean
+  /** The first attempt hit the token cap, so the chunk was regenerated as two halves and joined. */
+  resplit: boolean
   ms: number
   audioSeconds: number
 }

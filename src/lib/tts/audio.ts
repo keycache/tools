@@ -104,3 +104,16 @@ export function isSilent(pcm: Float32Array, threshold = 0.01): boolean {
   for (let i = 0; i < pcm.length; i++) if (Math.abs(pcm[i]) >= threshold) return false
   return true
 }
+
+/** Joins clips into one, inserting `pauseBefore` seconds of silence before each (ignored for the first). */
+export function joinWithPauses(parts: { pcm: Float32Array; pauseBefore: number }[], sampleRate: number): Float32Array {
+  const gaps = parts.map((p, i) => (i === 0 ? 0 : Math.round(p.pauseBefore * sampleRate)))
+  const out = new Float32Array(parts.reduce((n, p, i) => n + gaps[i] + p.pcm.length, 0))
+  let at = 0
+  parts.forEach((p, i) => {
+    at += gaps[i]
+    out.set(p.pcm, at)
+    at += p.pcm.length
+  })
+  return out
+}

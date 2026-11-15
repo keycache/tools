@@ -4,6 +4,7 @@ import { classifyError, describeCacheFailures } from '@/lib/transformers/errors'
 import { OpfsModelCache } from '@/lib/transformers/opfsCache'
 import { configureTransformers } from '@/lib/transformers/runtime'
 import { parseWav, resample, trimTo } from './audio'
+import { splitInHalf } from './chunk'
 import { ttsDir } from './cache'
 import {
   DEFAULT_VOICE_ID,
@@ -46,6 +47,8 @@ const speakers = new Map<string, Speaker>()
 let current: { id: number; criteria?: InterruptableStoppingCriteria } | null = null
 
 const PROGRESS_FLUSH_MS = 150
+/** Silence between the two halves of a re-split chunk (a sentence-internal pause). */
+const RESPLIT_GAP_SECONDS = 0.1
 
 const watchDevice = createDeviceWatch(env, (message) => {
   model = null
@@ -118,7 +121,9 @@ function load(id: number, device: TtsDevice, dtype: TtsDtype): Promise<void> {
 }
 
 async function synthesize(id: number, chunks: string[], voiceId: string, exaggeration: number): Promise<void> {
-  if (!model || !processor) throw coded('not-loaded', 'Load the model first.')
+  const mdl = model
+  const proc = processor
+  if (!mdl || !proc) throw coded('not-loaded', 'Load the model first.')
   const speaker = speakers.get(voiceId)
   if (!speaker) throw coded('no-voice', `Voice "${voiceId}" isn't loaded.`)
   const criteria = new InterruptableStoppingCriteria()
@@ -128,13 +133,13 @@ async function synthesize(id: number, chunks: string[], voiceId: string, exagger
   let audioSeconds = 0
   let done = 0
   try {
-    for (let index = 0; index < chunks.length && !criteria.interrupted; index++) {
-      const t = performance.now()
-      const inputs = await processor(chunks[index])
-      let speechTokens = 0
-      // generate() calls put() once per step; the first call is the prompt.
-      const streamer = { put: () => void speechTokens++, end: () => {} }
-      const waveform = (await model.generate({
+    // One generate call: the waveform and how many speech tokens it took (null if Stop interrupted it).
+    const generateOne = async (text: string): Promise<{ pcm: Float32Array; tokens: number } | null> => {
+      const inputs = await proc(text)
+      let calls = 0
+      // generate() calls put() once for the prompt, then once per generated token.
+      const streamer = { put: () => void calls++, end: () => {} }
+      const waveform = (await mdl.generate({
         ...inputs,
         ...speaker,
         exaggeration,
@@ -143,11 +148,34 @@ async function synthesize(id: number, chunks: string[], voiceId: string, exagger
         streamer,
       } as never)) as unknown as Tensor
       // Interrupted mid-chunk: the decoder ran on partial tokens — drop that audio.
-      if (criteria.interrupted) break
-      const pcm = new Float32Array(waveform.data as Float32Array)
+      if (criteria.interrupted) return null
+      return { pcm: new Float32Array(waveform.data as Float32Array), tokens: Math.max(0, calls - 1) }
+    }
+
+    for (let index = 0; index < chunks.length && !criteria.interrupted; index++) {
+      const t = performance.now()
+      const text = chunks[index]
+      let result = await generateOne(text)
+      if (!result) break
+      let hitCap = result.tokens >= MAX_NEW_TOKENS
+      let resplit = false
+      // Hit the token cap: the speech is probably cut off. Regenerate it once as two halves and join them.
+      const halves = hitCap ? splitInHalf(text) : null
+      if (halves) {
+        const a = await generateOne(halves[0])
+        const b = a && (await generateOne(halves[1]))
+        if (!a || !b) break
+        const gap = Math.round(RESPLIT_GAP_SECONDS * SAMPLE_RATE)
+        const pcm = new Float32Array(a.pcm.length + gap + b.pcm.length)
+        pcm.set(a.pcm)
+        pcm.set(b.pcm, a.pcm.length + gap)
+        result = { pcm, tokens: a.tokens + b.tokens }
+        hitCap = a.tokens >= MAX_NEW_TOKENS || b.tokens >= MAX_NEW_TOKENS
+        resplit = true
+      }
+      const { pcm, tokens } = result
       const seconds = pcm.length / SAMPLE_RATE
-      const tokens = Math.max(0, speechTokens - 1)
-      const stats: ChunkStats = { chars: chunks[index].length, speechTokens: tokens, hitCap: tokens >= MAX_NEW_TOKENS, ms: Math.round(performance.now() - t), audioSeconds: seconds }
+      const stats: ChunkStats = { chars: text.length, speechTokens: tokens, hitCap, resplit, ms: Math.round(performance.now() - t), audioSeconds: seconds }
       if (!firstAudioMs) firstAudioMs = Math.round(performance.now() - started)
       audioSeconds += seconds
       done++

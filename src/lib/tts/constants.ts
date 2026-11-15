@@ -19,7 +19,7 @@ export const SAMPLE_RATE = 24_000
 export const MAX_NEW_TOKENS = 256
 /** S0: ~1.65 speech tokens per character, so ~150 chars hit MAX_NEW_TOKENS; stay well below. */
 export const MAX_CHUNK_CHARS = 120
-export const MAX_INPUT_CHARS = 5_000
+export const MAX_INPUT_CHARS = 10_000
 export const MAX_REFERENCE_SECONDS = 10
 export const DEFAULT_EXAGGERATION = 0.5
 export const EXAGGERATION_RANGE = [0, 1.5] as const
