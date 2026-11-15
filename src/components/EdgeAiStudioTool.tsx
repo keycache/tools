@@ -1,24 +1,27 @@
 import { useState } from 'react'
-import { Ear, Eye, MessagesSquare, Wand2 } from 'lucide-react'
+import { AudioLines, Ear, Eye, MessagesSquare, Wand2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ActTab } from '@/components/edge-ai/ActTab'
 import { ChatTab } from '@/components/edge-ai/ChatTab'
 import { ListenTab } from '@/components/edge-ai/ListenTab'
 import { CactusModelGate } from '@/components/edge-ai/ModelGate'
 import { SeeTab } from '@/components/edge-ai/SeeTab'
+import { SpeakTab } from '@/components/edge-ai/SpeakTab'
 import { StorageMenu } from '@/components/edge-ai/StorageMenu'
 import { isCacheSupported, type ModelId } from '@/lib/cactus/assets'
 import { useCacheInfo } from '@/lib/cactus/client'
 import { useChatStorage, useGemmaCache } from '@/lib/gemma/hooks'
+import { useTtsCache } from '@/lib/tts/hooks'
 
-type TabId = 'listen' | 'see' | 'act' | 'chat'
+type TabId = 'listen' | 'see' | 'act' | 'chat' | 'speak'
 
 const TABS: { id: TabId; label: string; icon: typeof Wand2; model?: ModelId }[] = [
   { id: 'listen', label: 'Listen', model: 'whistle', icon: Ear },
   { id: 'see', label: 'See', model: 'mirage', icon: Eye },
   { id: 'act', label: 'Act', model: 'needle', icon: Wand2 },
-  // Gemma runs on its own engine (Transformers.js); its gate lives inside ChatTab.
+  // Gemma and Chatterbox run on Transformers.js, not Cactus; their gates live inside ChatTab / SpeakTab.
   { id: 'chat', label: 'Chat', icon: MessagesSquare },
+  { id: 'speak', label: 'Speak', icon: AudioLines },
 ]
 
 export function EdgeAiStudioTool() {
@@ -26,6 +29,7 @@ export function EdgeAiStudioTool() {
   const [visited, setVisited] = useState<Set<TabId>>(() => new Set([TABS[0].id]))
   const cache = useCacheInfo()
   const gemmaCache = useGemmaCache()
+  const ttsCache = useTtsCache()
   const chats = useChatStorage()
 
   const open = (id: TabId) => {
@@ -62,6 +66,7 @@ export function EdgeAiStudioTool() {
               entries={[
                 { id: 'cactus', label: 'Listen · See · Act models', bytes: cache.bytes, clear: cache.clear },
                 { id: 'gemma', label: 'Chat model (Gemma)', bytes: gemmaCache.bytes, clear: gemmaCache.clear },
+                { id: 'tts', label: 'Speak model (Chatterbox)', bytes: ttsCache.bytes, clear: ttsCache.clear },
                 {
                   id: 'chats',
                   label: `Saved chats (${chats.conversations})`,
@@ -86,6 +91,7 @@ export function EdgeAiStudioTool() {
           {id === 'see' && <SeeTab />}
           {id === 'act' && <ActTab />}
           {id === 'chat' && <ChatTab active={active === 'chat'} visited={visited.has('chat')} cache={gemmaCache} />}
+          {id === 'speak' && <SpeakTab active={active === 'speak'} visited={visited.has('speak')} cache={ttsCache} />}
         </div>
       ))}
     </div>

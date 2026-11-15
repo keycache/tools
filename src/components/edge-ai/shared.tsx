@@ -1,6 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Check, ChevronDown, Copy } from 'lucide-react'
+import { Check, ChevronDown, Copy, Cpu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { formatBytes } from '@/lib/cactus/media'
+import type { Capability } from '@/lib/transformers/capability'
 import { cn } from '@/lib/utils'
 
 export const fieldClass =
@@ -219,5 +221,20 @@ export function ResultTabs({
         {current && children(current)}
       </div>
     </div>
+  )
+}
+
+/** "WebGPU · q4f16 · 8 GB storage free" line under a Transformers.js model's controls. */
+export function DeviceSummary({ capability: c }: { capability: Capability }) {
+  const items = [
+    c.webgpu ? 'WebGPU' : 'No WebGPU',
+    c.dtype,
+    c.storage && `${formatBytes(Math.max(0, c.storage.quota - c.storage.usage))} storage free`,
+  ].filter(Boolean) as string[]
+  return (
+    <p className="inline-flex items-center gap-1.5">
+      <Cpu className="size-3.5" />
+      {items.join(' · ')}
+    </p>
   )
 }

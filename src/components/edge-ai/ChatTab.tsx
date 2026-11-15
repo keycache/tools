@@ -1,11 +1,12 @@
-import { Suspense, lazy, useCallback, useDeferredValue, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { Cpu, Loader2, Mic, PanelLeft, Paperclip, Send, Square, X } from 'lucide-react'
+import { Suspense, lazy, useCallback, useDeferredValue, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Loader2, Mic, PanelLeft, Paperclip, Send, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConversationList } from '@/components/edge-ai/ConversationList'
 import { ModelGate, type ModelSource } from '@/components/edge-ai/ModelGate'
-import { CopyButton, ErrorNote, Select } from '@/components/edge-ai/shared'
+import { CopyButton, DeviceSummary, ErrorNote, Select } from '@/components/edge-ai/shared'
+import { useOnline } from '@/components/edge-ai/useOnline'
 import { useAudioCapture, type CapturedAudio } from '@/components/edge-ai/useAudioCapture'
-import { AUDIO_ACCEPT, encodeWav, formatBytes, isAudioFile, prepareImage } from '@/lib/cactus/media'
+import { AUDIO_ACCEPT, encodeWav, isAudioFile, prepareImage } from '@/lib/cactus/media'
 import { AUDIO_SAMPLE_RATE, MAX_AUDIO_SECONDS } from '@/lib/gemma/conversation'
 import type { Capability } from '@/lib/gemma/capability'
 import { gemma, useGemma, type GemmaState } from '@/lib/gemma/client'
@@ -108,15 +109,6 @@ function fromStored(s: StoredMessage, track: (url: string) => string): ChatMessa
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
-function subscribeOnline(fn: () => void) {
-  window.addEventListener('online', fn)
-  window.addEventListener('offline', fn)
-  return () => {
-    window.removeEventListener('online', fn)
-    window.removeEventListener('offline', fn)
-  }
-}
-const useOnline = () => useSyncExternalStore(subscribeOnline, () => navigator.onLine, () => true)
 
 /** Tracks whether the page was hidden at any point while `active` is true. */
 function useHiddenWhile(active: boolean) {
@@ -836,18 +828,4 @@ function gemmaSource(capability: Capability | null, state: GemmaState, load: () 
     }
   }
   return source
-}
-
-function DeviceSummary({ capability: c }: { capability: Capability }) {
-  const items = [
-    c.webgpu ? 'WebGPU' : 'No WebGPU',
-    c.dtype,
-    c.storage && `${formatBytes(Math.max(0, c.storage.quota - c.storage.usage))} storage free`,
-  ].filter(Boolean) as string[]
-  return (
-    <p className="inline-flex items-center gap-1.5">
-      <Cpu className="size-3.5" />
-      {items.join(' · ')}
-    </p>
-  )
 }

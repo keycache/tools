@@ -4,6 +4,7 @@ import { OpfsModelCache, gemmaDir } from './opfsCache'
 import { classifyError, describeCacheFailures, collectAudio, collectImages, limitAudio, parseOutput, toTemplateMessages, trimTurns } from './conversation'
 import type { ChatTurn, GemmaRequest, GemmaResponse, GenSettings } from './protocol'
 import { configureTransformers } from './runtime'
+import { createDeviceWatch } from '@/lib/transformers/device'
 
 // The app's tsconfig uses the DOM lib; type only the worker globals we use.
 interface WorkerScope {
@@ -16,29 +17,12 @@ const post = (msg: GemmaResponse) => scope.postMessage(msg)
 const cache = new OpfsModelCache(gemmaDir, pinGemmaRevision)
 configureTransformers(env, cache)
 
-/**
- * Reports a lost GPU device (driver reset, GPU OOM, tab killed by the GPU process) even while idle, so the UI can
- * offer a reload instead of failing on the next message. `destroyed` is our own dispose and is ignored.
- */
-let watching = false
-async function watchDevice(): Promise<void> {
-  if (watching) return
-  watching = true
-  const webgpu = (env.backends.onnx as { webgpu?: { device?: Promise<GPUDevice> | GPUDevice } }).webgpu
-  const device = await Promise.race([Promise.resolve(webgpu?.device), new Promise<undefined>((r) => setTimeout(r, 2000))]).catch(() => undefined)
-  if (!device) {
-    watching = false
-    return
-  }
-  void device.lost.then((info) => {
-    watching = false
-    if (info.reason === 'destroyed') return
-    model = null
-    processor = null
-    loading = null
-    post({ id: 0, type: 'lost', message: `The GPU stopped responding${info.message ? ` (${info.message})` : ''}. Close other GPU-heavy tabs, then reload the model.` })
-  })
-}
+const watchDevice = createDeviceWatch(env, (message) => {
+  model = null
+  processor = null
+  loading = null
+  post({ id: 0, type: 'lost', message })
+})
 
 type Processor = Awaited<ReturnType<typeof AutoProcessor.from_pretrained>>
 type Model = Awaited<ReturnType<typeof Gemma4ForConditionalGeneration.from_pretrained>>
