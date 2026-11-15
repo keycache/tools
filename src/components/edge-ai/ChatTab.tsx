@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { ConversationList } from '@/components/edge-ai/ConversationList'
 import { ModelGate, type ModelSource } from '@/components/edge-ai/ModelGate'
 import { CopyButton, DeviceSummary, ErrorNote, Select } from '@/components/edge-ai/shared'
+import { useHiddenWhile } from '@/components/edge-ai/useHiddenWhile'
 import { useOnline } from '@/components/edge-ai/useOnline'
 import { useAudioCapture, type CapturedAudio } from '@/components/edge-ai/useAudioCapture'
 import { AUDIO_ACCEPT, encodeWav, isAudioFile, prepareImage } from '@/lib/cactus/media'
@@ -109,21 +110,6 @@ function fromStored(s: StoredMessage, track: (url: string) => string): ChatMessa
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
-
-/** Tracks whether the page was hidden at any point while `active` is true. */
-function useHiddenWhile(active: boolean) {
-  const hidden = useRef(false)
-  useEffect(() => {
-    if (!active) return
-    hidden.current = document.hidden
-    const onChange = () => {
-      if (document.hidden) hidden.current = true
-    }
-    document.addEventListener('visibilitychange', onChange)
-    return () => document.removeEventListener('visibilitychange', onChange)
-  }, [active])
-  return hidden
-}
 
 function saveErrorText(action: string, err: unknown): string {
   const quota = err instanceof Error && (err.name === 'QuotaExceededError' || /quota/i.test(err.message))

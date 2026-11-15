@@ -5,7 +5,7 @@ import { ORT_RUNTIME_BYTES } from '@/lib/transformers/constants'
 import { describeCacheFailures } from '@/lib/transformers/errors'
 import type { GpuLike } from '@/lib/transformers/capability'
 import { ORT_RUNTIME_URLS } from '@/lib/transformers/runtime'
-import { parseWav, resample, trimTo } from '@/lib/tts/audio'
+import { PEAK_CEILING, limitPeak, parseWav, resample, speechFileName, trimTo } from '@/lib/tts/audio'
 import { ttsReadyBytesFor } from '@/lib/tts/cache'
 import { detectTtsCapability } from '@/lib/tts/capability'
 import { DEFAULT_VOICE_URL, TTS_REVISION, isTtsFileFor, pinTtsRevision, ttsDtypeMap, ttsTotalBytes } from '@/lib/tts/constants'
@@ -155,5 +155,24 @@ describe('resample / trimTo', () => {
     const pcm = new Float32Array(30)
     expect(trimTo(pcm, 10, 2).length).toBe(20)
     expect(trimTo(pcm, 10, 5)).toBe(pcm)
+  })
+})
+
+describe('limitPeak', () => {
+  it('scales clipping audio down to −1 dBFS and keeps the shape', () => {
+    const out = limitPeak(new Float32Array([0.5, -1.19, 0.2]))
+    expect(Math.max(...out.map(Math.abs))).toBeCloseTo(PEAK_CEILING, 6)
+    expect(out[0] / out[2]).toBeCloseTo(2.5, 6)
+  })
+
+  it('leaves audio within range untouched (same array)', () => {
+    const pcm = new Float32Array([0.3, -0.8])
+    expect(limitPeak(pcm)).toBe(pcm)
+  })
+})
+
+describe('speechFileName', () => {
+  it('uses local date and time', () => {
+    expect(speechFileName(new Date(2026, 10, 5, 9, 3, 7))).toBe('speech-20261105-090307.wav')
   })
 })

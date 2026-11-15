@@ -72,3 +72,29 @@ export function trimTo(pcm: Float32Array, sampleRate: number, seconds: number): 
   const max = Math.floor(sampleRate * seconds)
   return pcm.length > max ? pcm.subarray(0, max) : pcm
 }
+
+/** −1 dBFS: headroom for 16-bit conversion and lossy re-encoding. */
+export const PEAK_CEILING = 10 ** (-1 / 20)
+
+/**
+ * Scales the clip down if its peak exceeds `ceiling` (Chatterbox output can exceed ±1 — S0 measured peaks up to
+ * 1.19 — which would clip in the WAV). Returns the input unchanged when it's already within range.
+ */
+export function limitPeak(pcm: Float32Array, ceiling = PEAK_CEILING): Float32Array {
+  let peak = 0
+  for (let i = 0; i < pcm.length; i++) {
+    const a = Math.abs(pcm[i])
+    if (a > peak) peak = a
+  }
+  if (peak <= ceiling) return pcm
+  const gain = ceiling / peak
+  const out = new Float32Array(pcm.length)
+  for (let i = 0; i < pcm.length; i++) out[i] = pcm[i] * gain
+  return out
+}
+
+/** `speech-20261115-142130.wav` (local time). */
+export function speechFileName(date = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `speech-${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}-${p(date.getHours())}${p(date.getMinutes())}${p(date.getSeconds())}.wav`
+}

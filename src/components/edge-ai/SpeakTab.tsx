@@ -1,12 +1,27 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { AudioLines, Download, Square } from 'lucide-react'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { ModelGate, type ModelSource } from '@/components/edge-ai/ModelGate'
-import { DeviceSummary } from '@/components/edge-ai/shared'
+import { DeviceSummary, ErrorNote, Stats } from '@/components/edge-ai/shared'
+import { useHiddenWhile } from '@/components/edge-ai/useHiddenWhile'
 import { useOnline } from '@/components/edge-ai/useOnline'
+import { encodeWav } from '@/lib/cactus/media'
 import type { Capability } from '@/lib/transformers/capability'
 import { ORT_RUNTIME_BYTES } from '@/lib/transformers/constants'
+import { limitPeak, speechFileName } from '@/lib/tts/audio'
 import { tts, useTts, type TtsState } from '@/lib/tts/client'
-import { DEFAULT_VOICE_BYTES, TTS_MODEL_ID, ttsTotalBytes } from '@/lib/tts/constants'
+import {
+  DEFAULT_EXAGGERATION,
+  DEFAULT_VOICE_BYTES,
+  DEFAULT_VOICE_ID,
+  EXAGGERATION_RANGE,
+  MAX_CHUNK_CHARS,
+  SAMPLE_RATE,
+  TTS_MODEL_ID,
+  ttsTotalBytes,
+} from '@/lib/tts/constants'
 import { useTtsCapability, type TtsCacheState } from '@/lib/tts/hooks'
+import type { ChunkStats, SynthStats } from '@/lib/tts/types'
 
 interface Props {
   /** Whether the Speak tab is visible (drives auto-load from storage). */
@@ -16,7 +31,21 @@ interface Props {
   cache: TtsCacheState
 }
 
-/** Speak tab (Chatterbox text-to-speech). Phase S2: model gate + engine; text input and playback follow in S3. */
+interface Clip {
+  id: number
+  url: string
+  fileName: string
+  seconds: number
+  chunk: ChunkStats
+  synth: SynthStats
+  backgrounded: boolean
+}
+
+/** Until long text is split into sentences (S5), one request is one generate call — keep it under the token cap. */
+const MAX_CHARS = MAX_CHUNK_CHARS
+
+const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
+
 export function SpeakTab({ active, visited, cache }: Props) {
   const capability = useTtsCapability(visited, cache.ready)
   const state = useTts()
@@ -27,17 +56,188 @@ export function SpeakTab({ active, visited, cache }: Props) {
     if (device === 'webgpu' && dtype) tts.load(device, dtype).catch(() => {})
   }, [device, dtype])
 
+  const [text, setText] = useState('')
+  const [exaggeration, setExaggeration] = useState(DEFAULT_EXAGGERATION)
+  const [clip, setClip] = useState<Clip | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [announcement, setAnnouncement] = useState('')
+  const [elapsed, setElapsed] = useState(0)
+  const audioRef = useRef<HTMLAudioElement>(null)
+  const clipId = useRef(0)
+
+  const ready = state.status === 'ready'
+  const busy = !!state.job
+  const hiddenDuringJob = useHiddenWhile(busy)
+  const chars = text.trim().length
+  const tooLong = chars > MAX_CHARS
+  const canSpeak = ready && !busy && chars > 0 && !tooLong
+
+  // Release the previous clip's blob URL when it's replaced or the tab unmounts.
+  useEffect(() => {
+    if (!clip) return
+    return () => URL.revokeObjectURL(clip.url)
+  }, [clip])
+
+  // Play a new clip as soon as it's ready (the user just pressed Speak). Browsers may still block it; the player stays.
+  useEffect(() => {
+    if (clip) void audioRef.current?.play().catch(() => {})
+  }, [clip])
+
+  const startedAt = useRef(0)
+  useEffect(() => {
+    if (!busy) return
+    const t = setInterval(() => setElapsed((performance.now() - startedAt.current) / 1000), 100)
+    return () => clearInterval(t)
+  }, [busy])
+
+  async function speak() {
+    if (!canSpeak) return
+    setError(null)
+    setAnnouncement('Generating speech…')
+    startedAt.current = performance.now()
+    setElapsed(0)
+    let result: { pcm: Float32Array; stats: ChunkStats } | null = null
+    try {
+      const done = await tts.synthesize([text.trim()], DEFAULT_VOICE_ID, exaggeration, (c, stats) => {
+        result = { pcm: c.pcm, stats }
+      })
+      const got = result as { pcm: Float32Array; stats: ChunkStats } | null
+      if (done.stopped || !got) {
+        setAnnouncement('Stopped.')
+        return
+      }
+      const pcm = limitPeak(got.pcm)
+      const seconds = pcm.length / SAMPLE_RATE
+      setClip({
+        id: ++clipId.current,
+        url: URL.createObjectURL(encodeWav(pcm, SAMPLE_RATE)),
+        fileName: speechFileName(),
+        seconds,
+        chunk: got.stats,
+        synth: done.stats,
+        backgrounded: hiddenDuringJob.current,
+      })
+      setAnnouncement(`Audio ready, ${seconds.toFixed(1)} seconds.`)
+    } catch (err) {
+      setError(errorText(err))
+      setAnnouncement('')
+    }
+  }
+
   return (
     <>
       <ModelGate source={ttsSource(capability, state, load, online)} active={active} />
-      <div className="rounded-xl border border-dashed px-4 py-6 text-sm text-muted-foreground">
-        <p>
-          {state.status === 'ready'
-            ? 'Speak is ready with the default voice. Typing text and playing it back arrives in the next update.'
-            : 'Turn text into natural speech, optionally in your own voice — generated entirely on this device.'}
-        </p>
+      <p className="sr-only" role="status" aria-live="polite">
+        {announcement}
+      </p>
+
+      <div
+        className="space-y-3"
+        onKeyDown={(e) => {
+          if (e.key === 'Escape' && busy) {
+            e.preventDefault()
+            tts.stop()
+          }
+        }}
+      >
+        <div className="space-y-1.5">
+          <div className="flex items-baseline justify-between gap-3">
+            <label htmlFor="speak-text" className="text-sm font-medium">
+              Text
+            </label>
+            <span id="speak-count" className={`text-xs tabular-nums ${tooLong ? 'text-destructive' : 'text-muted-foreground'}`}>
+              {chars} / {MAX_CHARS}
+            </span>
+          </div>
+          <textarea
+            id="speak-text"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault()
+                void speak()
+              }
+            }}
+            aria-describedby="speak-count speak-hint"
+            aria-invalid={tooLong}
+            placeholder={ready ? 'Type a sentence to hear it…' : 'Type a sentence — load Chatterbox above to hear it.'}
+            className="h-28 w-full resize-none rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+          <label className="flex items-center gap-2 text-sm">
+            <span className="font-medium">Exaggeration</span>
+            <input
+              type="range"
+              min={EXAGGERATION_RANGE[0]}
+              max={EXAGGERATION_RANGE[1]}
+              step={0.05}
+              value={exaggeration}
+              onChange={(e) => setExaggeration(Number(e.target.value))}
+              className="w-32 accent-primary"
+              aria-valuetext={`${exaggeration.toFixed(2)}${exaggeration === DEFAULT_EXAGGERATION ? ', default' : ''}`}
+            />
+            <span className="w-20 text-xs tabular-nums text-muted-foreground">
+              {exaggeration.toFixed(2)}
+              {exaggeration === DEFAULT_EXAGGERATION && ' · default'}
+            </span>
+          </label>
+          <p className="text-sm">
+            <span className="font-medium">Voice</span> <span className="text-muted-foreground">Default</span>
+          </p>
+          <div className="ml-auto">
+            {busy ? (
+              <Button variant="destructive" onClick={() => tts.stop()} className="h-9 gap-2">
+                <Square className="size-4" /> Stop
+              </Button>
+            ) : (
+              <Button onClick={() => void speak()} disabled={!canSpeak} className="h-9 gap-2">
+                <AudioLines className="size-4" /> Speak
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <div className="min-h-5 text-xs text-muted-foreground" aria-hidden="true">
+          {busy && `Generating speech… ${elapsed.toFixed(1)} s (usually about 1.5× the length of the audio)`}
+        </div>
+        <ErrorNote>{error}</ErrorNote>
+
+        <section aria-label="Generated audio" className="flex h-32 flex-col justify-center gap-2 rounded-xl border px-4 py-3">
+          {clip ? (
+            <>
+              <div className="flex items-center gap-3">
+                <audio ref={audioRef} key={clip.id} controls src={clip.url} className="h-10 min-w-0 flex-1" />
+                <a href={clip.url} download={clip.fileName} className={buttonVariants({ variant: 'outline', className: 'h-9 gap-2' })}>
+                  <Download className="size-4" /> Download WAV
+                </a>
+              </div>
+              <Stats
+                items={[
+                  `${clip.seconds.toFixed(1)} s audio`,
+                  `generated in ${(clip.synth.ms / 1000).toFixed(1)} s`,
+                  `${clip.synth.rtf.toFixed(2)}× real time`,
+                  `${clip.chunk.speechTokens} speech tokens`,
+                  clip.chunk.hitCap && 'may be cut off — shorten the text',
+                  clip.backgrounded && 'tab was in the background',
+                ]}
+              />
+            </>
+          ) : (
+            <p className="text-center text-sm text-muted-foreground">Your audio appears here.</p>
+          )}
+        </section>
+
+        <div className="flex min-h-8 flex-wrap items-start justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <p id="speak-hint">
+            Up to {MAX_CHARS} characters (about 8 s of speech) · Ctrl/⌘+Enter to speak · Esc to stop. Higher exaggeration sounds more
+            expressive and a little faster.
+          </p>
+          {capability && <DeviceSummary capability={capability} />}
+        </div>
       </div>
-      <div className="text-xs text-muted-foreground">{capability && <DeviceSummary capability={capability} />}</div>
     </>
   )
 }
