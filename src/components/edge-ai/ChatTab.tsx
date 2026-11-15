@@ -139,7 +139,7 @@ function saveErrorText(action: string, err: unknown): string {
 }
 
 export function ChatTab({ active, visited, cache }: Props) {
-  const capability = useGemmaCapability(visited, cache.bytes)
+  const capability = useGemmaCapability(visited, cache.ready)
   const state = useGemma()
   useEffect(() => {
     if (visited) void import('@/components/edge-ai/Markdown')

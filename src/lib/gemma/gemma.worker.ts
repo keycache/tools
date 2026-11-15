@@ -1,6 +1,6 @@
 import { AutoProcessor, Gemma4ForConditionalGeneration, InterruptableStoppingCriteria, RawImage, TextStreamer, env } from '@huggingface/transformers'
 import { GEMMA_CONTEXT_TOKENS, GEMMA_MODEL_ID, GEMMA_REVISION, pinGemmaRevision, type GemmaDevice, type GemmaDtype } from './constants'
-import { OpfsModelCache } from './opfsCache'
+import { OpfsModelCache, gemmaDir } from './opfsCache'
 import { classifyError, describeCacheFailures, collectAudio, collectImages, limitAudio, parseOutput, toTemplateMessages, trimTurns } from './conversation'
 import type { ChatTurn, GemmaRequest, GemmaResponse, GenSettings } from './protocol'
 import { configureTransformers } from './runtime'
@@ -13,7 +13,7 @@ interface WorkerScope {
 const scope = self as unknown as WorkerScope
 const post = (msg: GemmaResponse) => scope.postMessage(msg)
 
-const cache = new OpfsModelCache(undefined, pinGemmaRevision)
+const cache = new OpfsModelCache(gemmaDir, pinGemmaRevision)
 configureTransformers(env, cache)
 
 /**

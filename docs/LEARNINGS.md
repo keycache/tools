@@ -227,3 +227,13 @@ const [selectedSound, setSelectedSound] = useState(() => {
 **Solution**: `OpfsModelCache.put` deletes the partial file on any write error and records it in `failures`; after loading, the worker sends `ready{cacheWarning}` (`describeCacheFailures`) and the gate shows "Ready · not saved for offline use" with the reason.
 **Missteps**: Expected a load error (the streamed `put` path *does* propagate errors) — but with a custom cache the buffered path is used, which only warns.
 **Key Insight**: Treat "loaded" and "persisted" as separate outcomes. If a library catches errors from your plugin, record them in the plugin and report them yourself.
+
+## ONNX Runtime 1.31 Takes 80 s to Initialise the Chatterbox Decoder (Speak S0)
+**Problem**: Creating the session for Chatterbox's `conditional_decoder.onnx` (24k nodes, 540 MB) took 62–84 s — in Node (`onnxruntime-node` 1.31.1, CPU) and in the browser (`onnxruntime-web` 1.31.0-dev on WebGPU, the version Transformers.js 4.3.2 pins). The other three sessions took 0.2–2 s, so every visit to a Speak tab would have waited over a minute.
+**Solution**: It's an ONNX Runtime 1.31 regression. The same file, same options, in Python: ORT 1.31.1 → 83.9 s, ORT 1.32.0 → 2.3 s (all of it in `session_initialization`). In the browser, `onnxruntime-web@1.32.0-dev.20261110` → 6.2 s on WebGPU. Transformers.js picks up a newer ORT through an npm `overrides` entry (the spike tested it with a Vite alias for `onnxruntime-web/webgpu` + `onnxruntime-common`).
+**Missteps**:
+1. Pre-optimising the graph offline (`optimize.py`, `ORT_ENABLE_ALL`) and loading it with optimisation disabled — no faster, and the output is hardware-specific (NchwcTransformer warning).
+2. Suspecting I/O — reading the 509 MB of weights took 0.3 s.
+3. Suspecting the 20 `If` nodes — their subgraphs have one node each.
+4. Planned session-option experiments (`disable_prepacking`, optimisation levels, decoder on WASM) were unnecessary once the version comparison was done.
+**Key Insight**: When one model is pathologically slow to load, compare runtime versions on the same file before tuning the model or session options — `pip install --target /tmp/x onnxruntime==<old>` makes an A/B in minutes. Also: in Transformers.js, `env.localModelPath` must be a path, not an `http(s)` URL — `get_file_metadata()` skips local lookups for URLs, so the tokenizer silently isn't found ("Cannot read properties of undefined (reading 'tokenizer_class')").

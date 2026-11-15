@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { clearGemmaCache, getGemmaCacheInfo, type GemmaCacheInfo } from './cache'
+import { EMPTY_READY, clearGemmaCache, getGemmaCacheDetails, type GemmaCacheInfo, type GemmaReadyBytes } from './cache'
 import { detectCapability, type Capability } from './capability'
 import { chatStore, isChatStorageSupported, setLastOpen, type ChatUsage } from './storage'
 
@@ -49,16 +49,20 @@ export function notifyGemmaCacheChanged(): void {
 }
 
 export interface GemmaCacheState extends GemmaCacheInfo {
+  /** Per dtype: bytes of the files a load would read from storage (decides "stored" vs "download"). */
+  ready: GemmaReadyBytes
   refresh: () => void
   clear: () => Promise<void>
 }
 
+const EMPTY_INFO: GemmaCacheInfo = { bytes: 0, modelBytes: 0, files: 0 }
+
 export function useGemmaCache(): GemmaCacheState {
-  const [info, setInfo] = useState<GemmaCacheInfo>({ bytes: 0, modelBytes: 0, files: 0 })
+  const [details, setDetails] = useState({ info: EMPTY_INFO, ready: EMPTY_READY })
   const refresh = useCallback(() => {
-    getGemmaCacheInfo()
-      .then(setInfo)
-      .catch(() => setInfo({ bytes: 0, modelBytes: 0, files: 0 }))
+    getGemmaCacheDetails()
+      .then(setDetails)
+      .catch(() => setDetails({ info: EMPTY_INFO, ready: EMPTY_READY }))
   }, [])
   useEffect(() => {
     refresh()
@@ -69,24 +73,25 @@ export function useGemmaCache(): GemmaCacheState {
     await clearGemmaCache()
     notifyGemmaCacheChanged()
   }, [])
-  return { ...info, refresh, clear }
+  return { ...details.info, ready: details.ready, refresh, clear }
 }
 
 /**
- * Runs the WebGPU / storage check once `enabled` (i.e. the Chat tab is first opened), and again when the cached
- * byte count changes. Requesting a GPU adapter is cheap but not free, so other tabs never trigger it.
+ * Runs the WebGPU / storage check once `enabled` (i.e. the Chat tab is first opened), and again when the stored
+ * files change. Requesting a GPU adapter is cheap but not free, so other tabs never trigger it.
  */
-export function useGemmaCapability(enabled: boolean, cachedBytes: number): Capability | null {
+export function useGemmaCapability(enabled: boolean, ready: GemmaReadyBytes): Capability | null {
   const [capability, setCapability] = useState<Capability | null>(null)
+  const { q4f16, q4 } = ready
   useEffect(() => {
     if (!enabled) return
     let cancelled = false
-    void detectCapability({ cachedBytes }).then((c) => {
+    void detectCapability({ readyBytes: { q4f16, q4 } }).then((c) => {
       if (!cancelled) setCapability(c)
     })
     return () => {
       cancelled = true
     }
-  }, [enabled, cachedBytes])
+  }, [enabled, q4f16, q4])
   return capability
 }

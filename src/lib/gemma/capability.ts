@@ -34,8 +34,10 @@ export const STORAGE_HEADROOM = 1.1
 export interface DetectOptions {
   gpu?: GpuLike | null
   storage?: StorageLike | null
-  /** Bytes of Gemma files already cached (see cache.ts). */
+  /** Bytes of Gemma files already cached (see cache.ts). Ignored for a dtype that has an entry in `readyBytes`. */
   cachedBytes?: number
+  /** Per dtype: bytes of exactly the files that dtype loads, already in OPFS (`getGemmaCacheDetails().ready`). */
+  readyBytes?: Partial<Record<GemmaDtype, number>>
   secureContext?: boolean
 }
 
@@ -57,7 +59,8 @@ export async function detectCapability(opts: DetectOptions = {}): Promise<Capabi
   const shaderF16 = !!adapter?.features.has('shader-f16')
   const dtype: GemmaDtype | null = webgpu ? (shaderF16 ? 'q4f16' : 'q4') : null
   const totalBytes = dtype ? gemmaTotalBytes(dtype) : 0
-  const downloadBytes = Math.max(0, totalBytes - (opts.cachedBytes ?? 0))
+  const cached = (dtype && opts.readyBytes?.[dtype]) ?? opts.cachedBytes ?? 0
+  const downloadBytes = Math.max(0, totalBytes - cached)
 
   let storage: Capability['storage'] = null
   if (storageApi) {

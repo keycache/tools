@@ -2,6 +2,11 @@
  * Gemma 4 E2B (Chat tab) constants. Sizes are exact byte counts from the Hugging Face repo at GEMMA_REVISION;
  * update them together with the revision. See docs/SPECIFICATIONS.md §1.
  */
+import { ORT_RUNTIME_BYTES } from '@/lib/transformers/constants'
+import { pinRevision } from '@/lib/transformers/revision'
+
+export { ORT_RUNTIME_BYTES }
+
 export const GEMMA_MODEL_ID = 'onnx-community/gemma-4-E2B-it-ONNX'
 /** Pinned repo commit so cached files, sizes and behaviour stay consistent. */
 export const GEMMA_REVISION = '6f21c99d7e18237f8d2ce92aadfdbfeba877f63a'
@@ -25,9 +30,6 @@ export const GEMMA_SIZES: Record<GemmaDtype, GemmaComponentSizes> = {
 /** config.json, generation_config.json, processor/preprocessor configs, chat_template.jinja, tokenizer(.json/_config). */
 export const GEMMA_CONFIG_BYTES = 5_549 + 238 + 43 + 1_689 + 16_317 + 19_439_251 + 18_590
 
-/** ONNX Runtime Web "asyncify" build that Transformers.js uses for WebGPU/WASM, served from this site. */
-export const ORT_RUNTIME_BYTES = 26_861_777 + 53_057
-
 /**
  * Transformers.js 4.3.2 loads every session of Gemma4ForConditionalGeneration (text, vision **and** audio) together;
  * there is no public option to defer the audio encoder (only a text-only mode that also drops vision). So the
@@ -48,11 +50,22 @@ export function gemmaTotalBytes(dtype: GemmaDtype, { withAudio = GEMMA_LOADS_AUD
 export const GEMMA_CONTEXT_TOKENS = 8192
 
 /**
- * Transformers.js 4.3.2 checks `tokenizer_config.json` via `get_file_metadata(model, file, {})` without the
- * `revision` option, i.e. at `resolve/main/`. That misses our pinned-revision cache entry and goes to the network on
- * every load — which breaks loading offline. Mapping Gemma's `resolve/main/` URLs to the pinned revision makes that
- * lookup a cache hit.
+ * Pins Gemma's `resolve/main/` URLs to GEMMA_REVISION in the cache (Transformers.js 4.3.2 looks up
+ * `tokenizer_config.json` without the revision — see `pinRevision`).
  */
-export function pinGemmaRevision(url: string): string {
-  return url.replace(`/${GEMMA_MODEL_ID}/resolve/main/`, `/${GEMMA_MODEL_ID}/resolve/${GEMMA_REVISION}/`)
+export const pinGemmaRevision = pinRevision(GEMMA_MODEL_ID, GEMMA_REVISION)
+
+/** True for files of the Gemma repo at the pinned revision (cache keys are normalised to it). */
+export function isGemmaFileUrl(url: string): boolean {
+  return url.includes(`/${GEMMA_MODEL_ID}/resolve/${GEMMA_REVISION}/`)
+}
+
+/**
+ * True for the Gemma repo files that `dtype` actually loads: configs/tokenizer (outside `onnx/`) and that dtype's
+ * session files (`onnx/<name>_<dtype>.onnx[_data]`).
+ */
+export function isGemmaFileFor(url: string, dtype: GemmaDtype): boolean {
+  if (!isGemmaFileUrl(url)) return false
+  const path = url.slice(url.indexOf(`/resolve/${GEMMA_REVISION}/`) + `/resolve/${GEMMA_REVISION}/`.length)
+  return !path.startsWith('onnx/') || new RegExp(`_${dtype}\\.onnx(?:_data)?$`).test(path)
 }
