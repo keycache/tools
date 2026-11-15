@@ -11,6 +11,11 @@ export const SECONDS_PER_CHAR = 0.066
 export const DEFAULT_RTF = 1.7
 /** Extra slack on the start time, for jitter in chunk generation times. */
 export const START_MARGIN_SECONDS = 0.5
+/**
+ * Longest wait before playback starts (S8). For long texts the gap-free start would be minutes away (≈ 80 % of the
+ * generation time at 1.8× real time); after this cap playback starts and waits at part boundaries when it catches up.
+ */
+export const MAX_START_WAIT_SECONDS = 20
 
 export interface PlannedChunk {
   /** Seconds of silence before this chunk (0 for the first). */
@@ -52,6 +57,15 @@ export function playbackStartDelay(chunks: PlannedChunk[], margin = START_MARGIN
     position += seconds
   }
   return delay + (chunks.length > 1 ? margin : 0)
+}
+
+/**
+ * When to start playback (seconds after generation started): the gap-free start (`playbackStartDelay`), but no
+ * later than `cap` — and never before the first chunk is ready.
+ */
+export function playbackStartAt(chunks: PlannedChunk[], cap = MAX_START_WAIT_SECONDS): number {
+  const firstReady = chunks[0]?.done?.readyAt ?? 0
+  return Math.max(firstReady, Math.min(playbackStartDelay(chunks), cap))
 }
 
 /** Schedules chunks back to back (with pauses) on one AudioContext; chunks may be added while playing. */
@@ -116,6 +130,8 @@ export class SpeechPlayer {
       src.buffer = buffer
       src.connect(this.ctx.destination)
       src.onended = () => {
+        // Drop every reference so the browser can free the played AudioBuffer right away (long texts: ~1 MB/s).
+        src.disconnect()
         this.sources = this.sources.filter((s) => s !== src)
         if (!this.sources.length && !this.queue.length) this.onEnded?.()
       }

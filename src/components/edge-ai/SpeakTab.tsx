@@ -4,13 +4,13 @@ import { Button, buttonVariants } from '@/components/ui/button'
 import { ModelGate, type ModelSource } from '@/components/edge-ai/ModelGate'
 import { DeviceSummary, ErrorNote, Stats } from '@/components/edge-ai/shared'
 import type { CapturedAudio } from '@/components/edge-ai/useAudioCapture'
-import { useHiddenWhile } from '@/components/edge-ai/useHiddenWhile'
+import { useHiddenWhile, usePageHidden } from '@/components/edge-ai/useHiddenWhile'
 import { useOnline } from '@/components/edge-ai/useOnline'
 import { VoicePicker, type ReferenceClip, type VoiceMode } from '@/components/edge-ai/VoicePicker'
 import { encodeWav } from '@/lib/cactus/media'
 import type { Capability } from '@/lib/transformers/capability'
 import { ORT_RUNTIME_BYTES } from '@/lib/transformers/constants'
-import { isSilent, joinWithPauses, limitPeak, speechFileName, trimTo } from '@/lib/tts/audio'
+import { isSilent, limitPeak, speechFileName, toPcm16, trimTo, wavFromParts } from '@/lib/tts/audio'
 import { PAUSE_SECONDS, splitIntoChunks } from '@/lib/tts/chunk'
 import { TtsError, tts, useTts, type TtsState } from '@/lib/tts/client'
 import {
@@ -25,7 +25,7 @@ import {
   ttsTotalBytes,
 } from '@/lib/tts/constants'
 import { useTtsCapability, type TtsCacheState } from '@/lib/tts/hooks'
-import { SpeechPlayer, playbackStartDelay, type PlannedChunk } from '@/lib/tts/playback'
+import { MAX_START_WAIT_SECONDS, SpeechPlayer, playbackStartAt, type PlannedChunk } from '@/lib/tts/playback'
 import type { ChunkStats, SynthStats } from '@/lib/tts/types'
 
 interface Props {
@@ -50,7 +50,9 @@ interface Clip {
   /** Times playback had to wait for a chunk, and for how long in total. */
   stalls: number
   stallSeconds: number
-  stopped: boolean
+  /** Parts in the clip (fewer than `total` after Stop or an error). */
+  parts: number
+  outcome: 'complete' | 'stopped' | 'error'
   backgrounded: boolean
   voice: VoiceMode
 }
@@ -112,6 +114,7 @@ export function SpeakTab({ active, visited, cache }: Props) {
   const ready = state.status === 'ready'
   const busy = !!state.job
   const hiddenDuringJob = useHiddenWhile(busy)
+  const pageHidden = usePageHidden()
   const chars = text.trim().length
   const tooLong = chars > MAX_CHARS
   const custom = voiceMode === 'custom'
@@ -214,7 +217,8 @@ export function SpeakTab({ active, visited, cache }: Props) {
     }
 
     const plan: PlannedChunk[] = chunks.map((c, i) => ({ pause: i === 0 ? 0 : PAUSE_SECONDS[c.pause], chars: c.text.length }))
-    const parts: { pcm: Float32Array; pauseBefore: number; stats: ChunkStats }[] = []
+    // Finished parts as 16-bit PCM (half the memory of Float32); the float copy only goes to the player.
+    const parts: { pcm16: Int16Array; pauseBefore: number; stats: ChunkStats }[] = []
     let timer: ReturnType<typeof setTimeout> | undefined
     startedAt.current = performance.now()
     const since = () => (performance.now() - startedAt.current) / 1000
@@ -222,11 +226,12 @@ export function SpeakTab({ active, visited, cache }: Props) {
     setLive({ done: 0, total: chunks.length, startsIn: null })
     setAnnouncement(chunks.length > 1 ? `Generating speech in ${chunks.length} parts…` : 'Generating speech…')
 
-    // Start playback once the buffered audio covers the projected remaining generation time (never mid-stall).
+    // Start once the buffered audio covers the projected remaining generation time — or after MAX_START_WAIT_SECONDS,
+    // accepting short waits at part boundaries (never mid-part) so long texts don't wait minutes for the first word.
     const maybeStart = () => {
       clearTimeout(timer)
       if (p.isStarted || player.current !== p || !parts.length) return
-      const wait = playbackStartDelay(plan) - since()
+      const wait = playbackStartAt(plan) - since()
       if (wait <= 0) {
         p.start()
         setLivePlaying(true)
@@ -247,12 +252,38 @@ export function SpeakTab({ active, visited, cache }: Props) {
           const pcm = limitPeak(c.pcm)
           const seconds = pcm.length / SAMPLE_RATE
           plan[c.index].done = { seconds, readyAt: since(), genSeconds: stats.ms / 1000 }
-          parts.push({ pcm, pauseBefore: plan[c.index].pause, stats })
+          parts.push({ pcm16: toPcm16(pcm), pauseBefore: plan[c.index].pause, stats })
           p.push(pcm, plan[c.index].pause)
           setLive((l) => l && { ...l, done: c.index + 1 })
           maybeStart()
         },
       )
+    /** Turns the finished parts into the clip (also after Stop or an error), then releases them. */
+    const keep = (outcome: Clip['outcome'], stats?: SynthStats) => {
+      const seconds = parts.reduce((n, x, i) => n + x.pcm16.length / SAMPLE_RATE + (i ? x.pauseBefore : 0), 0)
+      const audio = parts.reduce((n, x) => n + x.stats.audioSeconds, 0)
+      const ms = Math.round(since() * 1000)
+      setClip({
+        id: ++clipId.current,
+        url: URL.createObjectURL(wavFromParts(parts, SAMPLE_RATE)),
+        fileName: speechFileName(),
+        seconds,
+        synth: stats ?? { chunks: parts.length, ms, firstAudioMs: 0, audioSeconds: audio, rtf: audio > 0 ? ms / 1000 / audio : 0 },
+        parts: parts.length,
+        total: chunks.length,
+        speechTokens: parts.reduce((n, x) => n + x.stats.speechTokens, 0),
+        cutOff: parts.filter((x) => x.stats.hitCap).length,
+        resplit: parts.filter((x) => x.stats.resplit).length,
+        stalls: p.stalls,
+        stallSeconds: p.stallSeconds,
+        outcome,
+        backgrounded: hiddenDuringJob.current,
+        voice: voiceMode,
+      })
+      parts.length = 0
+      return seconds
+    }
+
     try {
       let done
       try {
@@ -273,30 +304,20 @@ export function SpeakTab({ active, visited, cache }: Props) {
         setAnnouncement('Stopped.')
         return
       }
-      const pcm = joinWithPauses(parts, SAMPLE_RATE)
-      const seconds = pcm.length / SAMPLE_RATE
-      setClip({
-        id: ++clipId.current,
-        url: URL.createObjectURL(encodeWav(pcm, SAMPLE_RATE)),
-        fileName: speechFileName(),
-        seconds,
-        synth: done.stats,
-        total: chunks.length,
-        speechTokens: parts.reduce((n, x) => n + x.stats.speechTokens, 0),
-        cutOff: parts.filter((x) => x.stats.hitCap).length,
-        resplit: parts.filter((x) => x.stats.resplit).length,
-        stalls: p.stalls,
-        stallSeconds: p.stallSeconds,
-        stopped: done.stopped,
-        backgrounded: hiddenDuringJob.current,
-        voice: voiceMode,
-      })
-      setAnnouncement(done.stopped ? `Stopped. Kept ${parts.length} of ${chunks.length} parts, ${seconds.toFixed(1)} seconds.` : `Audio ready, ${seconds.toFixed(1)} seconds.`)
+      const kept = parts.length
+      const seconds = keep(done.stopped ? 'stopped' : 'complete', done.stats)
+      setAnnouncement(done.stopped ? `Stopped. Kept ${kept} of ${chunks.length} parts, ${seconds.toFixed(1)} seconds.` : `Audio ready, ${seconds.toFixed(1)} seconds.`)
     } catch (err) {
       clearTimeout(timer)
+      generated = true
       stopPlayback()
       setError(errorText(err))
-      setAnnouncement('')
+      // Keep what was generated before the error — on a long text that can be many minutes of audio.
+      if (parts.length) {
+        const kept = parts.length
+        const seconds = keep('error')
+        setAnnouncement(`Stopped by an error. Kept ${kept} of ${chunks.length} parts, ${seconds.toFixed(1)} seconds.`)
+      } else setAnnouncement('')
     } finally {
       setLive(null)
     }
@@ -389,7 +410,7 @@ export function SpeakTab({ active, visited, cache }: Props) {
 
         <div className="min-h-5 text-xs text-muted-foreground" aria-hidden="true">
           {busy
-            ? `Generating speech… ${elapsed.toFixed(1)} s (usually about 1.5× the length of the audio)${live && live.total > 1 ? ` · part ${Math.min(live.done + 1, live.total)} of ${live.total}` : ''}`
+            ? `Generating speech… ${elapsed.toFixed(1)} s (usually about 1.5× the length of the audio)${live && live.total > 1 ? ` · part ${Math.min(live.done + 1, live.total)} of ${live.total}` : ''}${pageHidden ? ' · Keep this tab visible for full speed' : ''}`
             : preparing
               ? 'Preparing your voice…'
               : custom && !voice && 'Add a voice clip on the right (or below) to speak in your voice.'}
@@ -415,7 +436,9 @@ export function SpeakTab({ active, visited, cache }: Props) {
               <Stats
                 items={[
                   `${clip.seconds.toFixed(1)} s audio`,
-                  clip.total > 1 && (clip.stopped ? `stopped — first ${clip.synth.chunks} of ${clip.total} parts` : `${clip.total} parts`),
+                  clip.outcome === 'error'
+                    ? `stopped by an error — first ${clip.parts} of ${clip.total} parts`
+                    : clip.total > 1 && (clip.outcome === 'stopped' ? `stopped — first ${clip.parts} of ${clip.total} parts` : `${clip.total} parts`),
                   `generated in ${(clip.synth.ms / 1000).toFixed(1)} s`,
                   `${clip.synth.rtf.toFixed(2)}× real time`,
                   `${clip.speechTokens} speech tokens`,
@@ -423,7 +446,7 @@ export function SpeakTab({ active, visited, cache }: Props) {
                   clip.stalls > 0 && `playback waited ${clip.stalls}× (${clip.stallSeconds.toFixed(1)} s)`,
                   clip.resplit > 0 && `${clip.resplit} part${clip.resplit > 1 ? 's' : ''} re-split`,
                   clip.cutOff > 0 && `${clip.cutOff} part${clip.cutOff > 1 ? 's' : ''} may be cut off`,
-                  clip.stopped && clip.total === 1 && 'stopped',
+                  clip.outcome === 'stopped' && clip.total === 1 && 'stopped',
                   clip.backgrounded && 'tab was in the background',
                 ]}
               />
@@ -435,8 +458,9 @@ export function SpeakTab({ active, visited, cache }: Props) {
 
         <div className="flex min-h-8 flex-wrap items-start justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
           <p id="speak-hint">
-            Up to {MAX_CHARS.toLocaleString()} characters, spoken sentence by sentence — playback starts once enough is buffered to
-            play without pauses · Ctrl/⌘+Enter to speak · Esc to stop. Higher exaggeration sounds more expressive and a little faster.
+            Up to {MAX_CHARS.toLocaleString()} characters, spoken sentence by sentence. Playback starts within about{' '}
+            {MAX_START_WAIT_SECONDS} s; on long texts it may pause between parts while generation catches up · Ctrl/⌘+Enter to speak ·
+            Esc to stop. Higher exaggeration sounds more expressive and a little faster.
           </p>
           {capability && <DeviceSummary capability={capability} />}
         </div>

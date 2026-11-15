@@ -117,3 +117,48 @@ export function joinWithPauses(parts: { pcm: Float32Array; pauseBefore: number }
   })
   return out
 }
+
+/** Float [-1, 1] → 16-bit PCM, quantised exactly like `encodeWav` (half the memory of Float32). */
+export function toPcm16(pcm: Float32Array): Int16Array {
+  const out = new Int16Array(pcm.length)
+  for (let i = 0; i < pcm.length; i++) {
+    const s = Math.max(-1, Math.min(1, pcm[i]))
+    out[i] = s < 0 ? s * 0x8000 : s * 0x7fff
+  }
+  return out
+}
+
+/**
+ * 16-bit mono WAV from parts with `pauseBefore` seconds of silence before each (none before the first). The Blob is
+ * assembled from the parts directly — no joined copy of the whole audio is made in JS memory.
+ */
+export function wavFromParts(parts: { pcm16: Int16Array; pauseBefore: number }[], sampleRate: number): Blob {
+  const gaps = parts.map((p, i) => (i === 0 ? 0 : Math.round(p.pauseBefore * sampleRate)))
+  const samples = parts.reduce((n, p, i) => n + gaps[i] + p.pcm16.length, 0)
+  const header = new ArrayBuffer(44)
+  const v = new DataView(header)
+  const str = (at: number, s: string) => [...s].forEach((c, i) => v.setUint8(at + i, c.charCodeAt(0)))
+  str(0, 'RIFF')
+  v.setUint32(4, 36 + samples * 2, true)
+  str(8, 'WAVE')
+  str(12, 'fmt ')
+  v.setUint32(16, 16, true)
+  v.setUint16(20, 1, true)
+  v.setUint16(22, 1, true)
+  v.setUint32(24, sampleRate, true)
+  v.setUint32(28, sampleRate * 2, true)
+  v.setUint16(32, 2, true)
+  v.setUint16(34, 16, true)
+  str(36, 'data')
+  v.setUint32(40, samples * 2, true)
+  const silence = new Map<number, Int16Array>()
+  const pieces: BlobPart[] = [header]
+  parts.forEach((p, i) => {
+    if (gaps[i] > 0) {
+      if (!silence.has(gaps[i])) silence.set(gaps[i], new Int16Array(gaps[i]))
+      pieces.push(silence.get(gaps[i]) as Int16Array<ArrayBuffer>)
+    }
+    pieces.push(p.pcm16 as Int16Array<ArrayBuffer>)
+  })
+  return new Blob(pieces, { type: 'audio/wav' })
+}
