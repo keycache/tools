@@ -19,11 +19,11 @@ export function isAudioFile(file: { name: string; type: string }): boolean {
   return file.type.startsWith('audio/') || file.type.startsWith('video/') || AUDIO_EXTENSIONS.test(file.name)
 }
 
-/** Decodes any browser-supported audio (wav, mp3, m4a, webm/opus, …) to 16 kHz mono float PCM. */
-export async function decodeAudio(blob: Blob): Promise<Float32Array> {
+/** Decodes any browser-supported audio (wav, mp3, m4a, webm/opus, …) to mono float PCM at `sampleRate` (16 kHz default). */
+export async function decodeAudio(blob: Blob, sampleRate = SAMPLE_RATE): Promise<Float32Array> {
   const data = await blob.arrayBuffer()
-  // decodeAudioData resamples to the context's rate, so a 16 kHz context does the resampling for us.
-  const ctx = new OfflineAudioContext(1, 1, SAMPLE_RATE)
+  // decodeAudioData resamples to the context's rate, so a context at the target rate does the resampling for us.
+  const ctx = new OfflineAudioContext(1, 1, sampleRate)
   const buffer = await ctx.decodeAudioData(data)
   const channels = Array.from({ length: buffer.numberOfChannels }, (_, i) => buffer.getChannelData(i))
   return mixToMono(channels)

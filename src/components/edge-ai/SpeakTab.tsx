@@ -3,19 +3,22 @@ import { AudioLines, Download, Square } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { ModelGate, type ModelSource } from '@/components/edge-ai/ModelGate'
 import { DeviceSummary, ErrorNote, Stats } from '@/components/edge-ai/shared'
+import type { CapturedAudio } from '@/components/edge-ai/useAudioCapture'
 import { useHiddenWhile } from '@/components/edge-ai/useHiddenWhile'
 import { useOnline } from '@/components/edge-ai/useOnline'
+import { VoicePicker, type ReferenceClip, type VoiceMode } from '@/components/edge-ai/VoicePicker'
 import { encodeWav } from '@/lib/cactus/media'
 import type { Capability } from '@/lib/transformers/capability'
 import { ORT_RUNTIME_BYTES } from '@/lib/transformers/constants'
-import { limitPeak, speechFileName } from '@/lib/tts/audio'
-import { tts, useTts, type TtsState } from '@/lib/tts/client'
+import { isSilent, limitPeak, speechFileName, trimTo } from '@/lib/tts/audio'
+import { TtsError, tts, useTts, type TtsState } from '@/lib/tts/client'
 import {
   DEFAULT_EXAGGERATION,
   DEFAULT_VOICE_BYTES,
   DEFAULT_VOICE_ID,
   EXAGGERATION_RANGE,
   MAX_CHUNK_CHARS,
+  MAX_REFERENCE_SECONDS,
   SAMPLE_RATE,
   TTS_MODEL_ID,
   ttsTotalBytes,
@@ -39,6 +42,15 @@ interface Clip {
   chunk: ChunkStats
   synth: SynthStats
   backgrounded: boolean
+  voice: VoiceMode
+}
+
+/** The user's reference voice: PCM kept so it can be re-encoded if the worker restarts (e.g. after GPU loss). */
+interface CustomVoice {
+  id: string
+  pcm: Float32Array
+  clip: ReferenceClip
+  encoded: boolean
 }
 
 /** Until long text is split into sentences (S5), one request is one generate call — keep it under the token cap. */
@@ -65,18 +77,35 @@ export function SpeakTab({ active, visited, cache }: Props) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const clipId = useRef(0)
 
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>('default')
+  const [voice, setVoice] = useState<CustomVoice | null>(null)
+  const [preparing, setPreparing] = useState(false)
+  const [voiceError, setVoiceError] = useState<string | null>(null)
+  const voiceSeq = useRef(0)
+  /** Latest clip for async callbacks (an encode may finish after the clip was replaced or removed). */
+  const voiceRef = useRef<CustomVoice | null>(null)
+  useEffect(() => {
+    voiceRef.current = voice
+  }, [voice])
+
   const ready = state.status === 'ready'
   const busy = !!state.job
   const hiddenDuringJob = useHiddenWhile(busy)
   const chars = text.trim().length
   const tooLong = chars > MAX_CHARS
-  const canSpeak = ready && !busy && chars > 0 && !tooLong
+  const custom = voiceMode === 'custom'
+  const canSpeak = ready && !busy && !preparing && chars > 0 && !tooLong && (!custom || !!voice)
 
   // Release the previous clip's blob URL when it's replaced or the tab unmounts.
   useEffect(() => {
     if (!clip) return
     return () => URL.revokeObjectURL(clip.url)
   }, [clip])
+
+  useEffect(() => {
+    if (!voice) return
+    return () => URL.revokeObjectURL(voice.clip.url)
+  }, [voice])
 
   // Play a new clip as soon as it's ready (the user just pressed Speak). Browsers may still block it; the player stays.
   useEffect(() => {
@@ -90,17 +119,76 @@ export function SpeakTab({ active, visited, cache }: Props) {
     return () => clearInterval(t)
   }, [busy])
 
+  /** Encodes `v` in the worker (speaker cache keyed by id). Returns false if it failed or the clip was replaced. */
+  async function prepareVoice(v: CustomVoice): Promise<boolean> {
+    setPreparing(true)
+    setVoiceError(null)
+    try {
+      // The PCM buffer is transferred to the worker, so send a copy and keep ours for re-encoding.
+      await tts.encodeVoice(v.id, v.pcm.slice())
+      if (voiceRef.current?.id !== v.id) return false
+      setVoice({ ...v, encoded: true })
+      return true
+    } catch (err) {
+      if (voiceRef.current?.id === v.id) setVoiceError(`Couldn't prepare this voice: ${errorText(err)}`)
+      return false
+    } finally {
+      setPreparing(false)
+    }
+  }
+
+  function addVoice(audio: CapturedAudio) {
+    URL.revokeObjectURL(audio.url)
+    if (isSilent(audio.pcm)) {
+      setVoiceError('This clip is silent — check the microphone or pick another file.')
+      return
+    }
+    const trimmed = audio.seconds > MAX_REFERENCE_SECONDS
+    const pcm = trimTo(audio.pcm, SAMPLE_RATE, MAX_REFERENCE_SECONDS).slice()
+    const v: CustomVoice = {
+      id: `voice-${++voiceSeq.current}`,
+      pcm,
+      clip: { url: URL.createObjectURL(encodeWav(pcm, SAMPLE_RATE)), name: audio.name, seconds: pcm.length / SAMPLE_RATE, trimmed },
+      encoded: false,
+    }
+    setVoiceError(null)
+    setVoice(v)
+    voiceRef.current = v
+    setAnnouncement(`Voice clip added, ${v.clip.seconds.toFixed(1)} seconds${trimmed ? `, first ${MAX_REFERENCE_SECONDS} seconds used` : ''}.`)
+    if (ready) void prepareVoice(v)
+  }
+
+  function removeVoice() {
+    setVoice(null)
+    voiceRef.current = null
+    setVoiceError(null)
+  }
+
   async function speak() {
     if (!canSpeak) return
     setError(null)
+    let voiceId = DEFAULT_VOICE_ID
+    if (custom && voice) {
+      if (!voice.encoded && !(await prepareVoice(voice))) return
+      voiceId = voice.id
+    }
     setAnnouncement('Generating speech…')
     startedAt.current = performance.now()
     setElapsed(0)
     let result: { pcm: Float32Array; stats: ChunkStats } | null = null
-    try {
-      const done = await tts.synthesize([text.trim()], DEFAULT_VOICE_ID, exaggeration, (c, stats) => {
+    const run = () =>
+      tts.synthesize([text.trim()], voiceId, exaggeration, (c, stats) => {
         result = { pcm: c.pcm, stats }
       })
+    try {
+      let done
+      try {
+        done = await run()
+      } catch (err) {
+        // The worker lost its speaker cache (restarted after a GPU loss / reload): encode the clip again, once.
+        if (!(err instanceof TtsError && err.code === 'no-voice' && custom && voice && (await prepareVoice(voice)))) throw err
+        done = await run()
+      }
       const got = result as { pcm: Float32Array; stats: ChunkStats } | null
       if (done.stopped || !got) {
         setAnnouncement('Stopped.')
@@ -116,6 +204,7 @@ export function SpeakTab({ active, visited, cache }: Props) {
         chunk: got.stats,
         synth: done.stats,
         backgrounded: hiddenDuringJob.current,
+        voice: voiceMode,
       })
       setAnnouncement(`Audio ready, ${seconds.toFixed(1)} seconds.`)
     } catch (err) {
@@ -140,7 +229,8 @@ export function SpeakTab({ active, visited, cache }: Props) {
           }
         }}
       >
-        <div className="space-y-1.5">
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="flex h-44 flex-col gap-1.5">
           <div className="flex items-baseline justify-between gap-3">
             <label htmlFor="speak-text" className="text-sm font-medium">
               Text
@@ -162,7 +252,18 @@ export function SpeakTab({ active, visited, cache }: Props) {
             aria-describedby="speak-count speak-hint"
             aria-invalid={tooLong}
             placeholder={ready ? 'Type a sentence to hear it…' : 'Type a sentence — load Chatterbox above to hear it.'}
-            className="h-28 w-full resize-none rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            className="min-h-0 w-full flex-1 resize-none rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          />
+        </div>
+          <VoicePicker
+            mode={voiceMode}
+            onModeChange={setVoiceMode}
+            clip={voice?.clip ?? null}
+            onAudio={addVoice}
+            onRemove={removeVoice}
+            status={!voice ? 'idle' : preparing ? 'preparing' : voice.encoded ? 'ready' : 'idle'}
+            error={voiceError}
+            disabled={busy || preparing}
           />
         </div>
 
@@ -184,9 +285,6 @@ export function SpeakTab({ active, visited, cache }: Props) {
               {exaggeration === DEFAULT_EXAGGERATION && ' · default'}
             </span>
           </label>
-          <p className="text-sm">
-            <span className="font-medium">Voice</span> <span className="text-muted-foreground">Default</span>
-          </p>
           <div className="ml-auto">
             {busy ? (
               <Button variant="destructive" onClick={() => tts.stop()} className="h-9 gap-2">
@@ -201,7 +299,11 @@ export function SpeakTab({ active, visited, cache }: Props) {
         </div>
 
         <div className="min-h-5 text-xs text-muted-foreground" aria-hidden="true">
-          {busy && `Generating speech… ${elapsed.toFixed(1)} s (usually about 1.5× the length of the audio)`}
+          {busy
+            ? `Generating speech… ${elapsed.toFixed(1)} s (usually about 1.5× the length of the audio)`
+            : preparing
+              ? 'Preparing your voice…'
+              : custom && !voice && 'Add a voice clip on the right (or below) to speak in your voice.'}
         </div>
         <ErrorNote>{error}</ErrorNote>
 
@@ -220,6 +322,7 @@ export function SpeakTab({ active, visited, cache }: Props) {
                   `generated in ${(clip.synth.ms / 1000).toFixed(1)} s`,
                   `${clip.synth.rtf.toFixed(2)}× real time`,
                   `${clip.chunk.speechTokens} speech tokens`,
+                  clip.voice === 'custom' ? 'your voice' : 'default voice',
                   clip.chunk.hitCap && 'may be cut off — shorten the text',
                   clip.backgrounded && 'tab was in the background',
                 ]}

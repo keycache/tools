@@ -9,10 +9,10 @@ export interface CapturedAudio {
 }
 
 /**
- * Microphone recording + audio file decoding to 16 kHz PCM. Shared by the record/upload buttons and
- * any drop zone, so a layout can place them in different spots while using one capture state.
+ * Microphone recording + audio file decoding to mono PCM (16 kHz by default; Speak uses 24 kHz). Shared by the
+ * record/upload buttons and any drop zone, so a layout can place them in different spots while using one capture state.
  */
-export function useAudioCapture(onAudio: (audio: CapturedAudio) => void, disabled = false) {
+export function useAudioCapture(onAudio: (audio: CapturedAudio) => void, disabled = false, { sampleRate = SAMPLE_RATE } = {}) {
   const recorder = useRef<Recorder | null>(null)
   const [recording, setRecording] = useState(false)
   const [elapsed, setElapsed] = useState(0)
@@ -32,9 +32,9 @@ export function useAudioCapture(onAudio: (audio: CapturedAudio) => void, disable
     setBusy(true)
     setError(null)
     try {
-      const pcm = await decodeAudio(blob)
+      const pcm = await decodeAudio(blob, sampleRate)
       if (!pcm.length) throw new Error('The audio is empty')
-      onAudio({ pcm, url: URL.createObjectURL(blob), name, seconds: pcm.length / SAMPLE_RATE })
+      onAudio({ pcm, url: URL.createObjectURL(blob), name, seconds: pcm.length / sampleRate })
     } catch (err) {
       setError(`Could not read audio: ${err instanceof Error ? err.message : String(err)}`)
     } finally {

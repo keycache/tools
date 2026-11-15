@@ -5,7 +5,7 @@ import { ORT_RUNTIME_BYTES } from '@/lib/transformers/constants'
 import { describeCacheFailures } from '@/lib/transformers/errors'
 import type { GpuLike } from '@/lib/transformers/capability'
 import { ORT_RUNTIME_URLS } from '@/lib/transformers/runtime'
-import { PEAK_CEILING, limitPeak, parseWav, resample, speechFileName, trimTo } from '@/lib/tts/audio'
+import { PEAK_CEILING, isSilent, limitPeak, parseWav, resample, speechFileName, trimTo } from '@/lib/tts/audio'
 import { ttsReadyBytesFor } from '@/lib/tts/cache'
 import { detectTtsCapability } from '@/lib/tts/capability'
 import { DEFAULT_VOICE_URL, TTS_REVISION, isTtsFileFor, pinTtsRevision, ttsDtypeMap, ttsTotalBytes } from '@/lib/tts/constants'
@@ -174,5 +174,13 @@ describe('limitPeak', () => {
 describe('speechFileName', () => {
   it('uses local date and time', () => {
     expect(speechFileName(new Date(2026, 10, 5, 9, 3, 7))).toBe('speech-20261105-090307.wav')
+  })
+})
+
+describe('isSilent', () => {
+  it('flags clips below −40 dBFS', () => {
+    expect(isSilent(new Float32Array(100).fill(0.005))).toBe(true)
+    expect(isSilent(new Float32Array([0, 0.2, 0]))).toBe(false)
+    expect(isSilent(new Float32Array(0))).toBe(true)
   })
 })

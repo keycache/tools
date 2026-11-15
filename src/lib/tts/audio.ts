@@ -98,3 +98,9 @@ export function speechFileName(date = new Date()): string {
   const p = (n: number) => String(n).padStart(2, '0')
   return `speech-${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}-${p(date.getHours())}${p(date.getMinutes())}${p(date.getSeconds())}.wav`
 }
+
+/** True when the clip has no usable signal (peak below −40 dBFS), e.g. a muted microphone. */
+export function isSilent(pcm: Float32Array, threshold = 0.01): boolean {
+  for (let i = 0; i < pcm.length; i++) if (Math.abs(pcm[i]) >= threshold) return false
+  return true
+}
