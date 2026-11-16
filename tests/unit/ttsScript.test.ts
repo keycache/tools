@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { PAUSE_SECONDS, splitIntoChunks } from '@/lib/tts/chunk'
-import { SECONDS_PER_CHAR, TURN_GAP_SECONDS, formatDuration, hasErrors, parseScript, planChunks } from '@/lib/tts/script'
+import { SECONDS_PER_CHAR, TURN_GAP_SECONDS, formatDuration, hasErrors, lineFileName, parseScript, planChunks } from '@/lib/tts/script'
 
 const conv = (text: string) => parseScript(text, { mode: 'conversation' })
 const single = (text: string) => parseScript(text, { mode: 'single' })
@@ -126,10 +126,10 @@ describe('planChunks', () => {
   it('uses speaker-change, same-speaker and [pause] gaps, and per-turn / per-speaker exaggeration', () => {
     const s = conv('[S1] One. [S2] Two. [S2] Three. [pause 3s] [S1] [exaggeration 1.1] Four.')
     expect(planChunks(s, (n) => (n === 1 ? 0.4 : 0.6))).toEqual([
-      { text: 'One.', speaker: 1, exaggeration: 0.4, pause: 0, turn: 0 },
-      { text: 'Two.', speaker: 2, exaggeration: 0.6, pause: TURN_GAP_SECONDS, turn: 1 },
-      { text: 'Three.', speaker: 2, exaggeration: 0.6, pause: PAUSE_SECONDS.paragraph, turn: 2 },
-      { text: 'Four.', speaker: 1, exaggeration: 1.1, pause: 3, turn: 3 },
+      { text: 'One.', speaker: 1, exaggeration: 0.4, pause: 0, turn: 0, line: 0 },
+      { text: 'Two.', speaker: 2, exaggeration: 0.6, pause: TURN_GAP_SECONDS, turn: 1, line: 1 },
+      { text: 'Three.', speaker: 2, exaggeration: 0.6, pause: PAUSE_SECONDS.paragraph, turn: 2, line: 2 },
+      { text: 'Four.', speaker: 1, exaggeration: 1.1, pause: 3, turn: 3, line: 3 },
     ])
   })
 
@@ -148,6 +148,27 @@ describe('planChunks', () => {
     expect(chunks.every((c) => c.text.length <= 40)).toBe(true)
     expect(chunks.filter((c) => c.speaker === 1).slice(1).every((c) => c.pause === PAUSE_SECONDS.sentence)).toBe(true)
     expect(chunks.at(-1)).toMatchObject({ text: 'Short.', pause: TURN_GAP_SECONDS })
+  })
+})
+
+describe('zip lines', () => {
+  it('one line per turn in conversation, even when a turn has several chunks or paragraphs', () => {
+    const s = conv(`[S1] ${'A sentence that is fairly long. '.repeat(3)}\n\nSecond paragraph. [S2] Reply. [pause 1s] After the pause.`)
+    const chunks = planChunks(s, 0.5, 40)
+    expect(chunks.filter((c) => c.speaker === 1).every((c) => c.line === 0)).toBe(true)
+    expect(chunks.filter((c) => c.speaker === 2).map((c) => [c.text, c.line])).toEqual([
+      ['Reply.', 1],
+      ['After the pause.', 2],
+    ])
+  })
+
+  it('one line per paragraph in single mode, across merged lines and marker splits', () => {
+    const s = single(`${'Long sentence number one goes here. '.repeat(3)}\nSame paragraph.\n\nNew paragraph. [pause 1s] Split.\n[exaggeration 1] Own line.`)
+    expect(planChunks(s, 0.5, 40).map((c) => c.line)).toEqual([0, 0, 0, 0, 1, 2, 3])
+  })
+
+  it('names files in order, padded to the line count (at least 3 digits)', () => {
+    expect([lineFileName(0, 5, 1), lineFileName(4, 5, 3), lineFileName(0, 5), lineFileName(41, 1200, 2)]).toEqual(['001-S1.wav', '005-S3.wav', '001.wav', '0042-S2.wav'])
   })
 })
 

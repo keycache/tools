@@ -249,6 +249,8 @@ export interface ScriptChunk {
   pause: number
   /** Index into `script.turns` of the turn (single mode: first turn of a merged run) this chunk belongs to. */
   turn: number
+  /** File in the "lines" zip, counting from 0: one per turn (conversation) or per paragraph (single mode). */
+  line: number
 }
 
 /**
@@ -282,10 +284,19 @@ export function planChunks(
         : PAUSE_SECONDS[turn.paragraph ? 'paragraph' : 'sentence'])
     const ex = turn.exaggeration ?? base(turn.speaker)
     splitIntoChunks(text, maxChars).forEach((c, i) => {
-      out.push({ text: c.text, speaker: turn.speaker, exaggeration: ex, pause: out.length === 0 ? 0 : i === 0 ? gap : PAUSE_SECONDS[c.pause], turn: first })
+      // splitIntoChunks marks each paragraph's first chunk 'paragraph'; single mode starts a new file there.
+      const newLine = out.length === 0 || i === 0 || (script.mode === 'single' && c.pause === 'paragraph')
+      const line = out.length === 0 ? 0 : out[out.length - 1].line + (newLine ? 1 : 0)
+      out.push({ text: c.text, speaker: turn.speaker, exaggeration: ex, pause: out.length === 0 ? 0 : i === 0 ? gap : PAUSE_SECONDS[c.pause], turn: first, line })
     })
   })
   return out
+}
+
+/** Name of line `index` (0-based) of `count` in the zip: `001-S1.wav` (conversation) or `001.wav`; at least 3 digits. */
+export function lineFileName(index: number, count: number, speaker?: SpeakerNumber): string {
+  const n = String(index + 1).padStart(Math.max(3, String(count).length), '0')
+  return speaker ? `${n}-S${speaker}.wav` : `${n}.wav`
 }
 
 /** "about 1 min 40 s" */

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AudioLines, Download, Square, VolumeX } from 'lucide-react'
+import { AudioLines, Download, FileArchive, Square, VolumeX } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { ModelGate, type ModelSource } from '@/components/edge-ai/ModelGate'
 import { ScriptNotes } from '@/components/edge-ai/ScriptNotes'
@@ -25,6 +25,7 @@ import {
 } from '@/lib/tts/constants'
 import { useTtsCapability, type TtsCacheState } from '@/lib/tts/hooks'
 import { MAX_START_WAIT_SECONDS, SpeechPlayer, playbackStartAt, type PlannedChunk } from '@/lib/tts/playback'
+import { linesZip } from '@/lib/tts/lines'
 import { formatDuration, hasErrors, parseScript, planChunks, type ScriptMode, type SpeakerNumber } from '@/lib/tts/script'
 import type { ChunkStats, SynthStats } from '@/lib/tts/types'
 import { DEFAULT_SPEAKER_VOICES, VOICE_STORAGE_KEY, speakerVoiceKey } from '@/lib/tts/voices'
@@ -42,6 +43,8 @@ interface Clip {
   id: number
   url: string
   fileName: string
+  /** One WAV per line (turn / paragraph); null when there's only one line. */
+  zip: { url: string; fileName: string; lines: number; per: 'turn' | 'paragraph' } | null
   seconds: number
   synth: SynthStats
   /** Chunks the text was split into (the clip may hold fewer if stopped). */
@@ -137,7 +140,10 @@ export function SpeakTab({ active, visited, cache }: Props) {
   // Release the previous clip's blob URL when it's replaced or the tab unmounts.
   useEffect(() => {
     if (!clip) return
-    return () => URL.revokeObjectURL(clip.url)
+    return () => {
+      URL.revokeObjectURL(clip.url)
+      if (clip.zip) URL.revokeObjectURL(clip.zip.url)
+    }
   }, [clip])
 
   const startedAt = useRef(0)
@@ -210,7 +216,7 @@ export function SpeakTab({ active, visited, cache }: Props) {
 
     const plan: PlannedChunk[] = chunks.map((c) => ({ pause: c.pause, chars: c.text.length }))
     // Finished parts as 16-bit PCM (half the memory of Float32); the float copy only goes to the player.
-    const parts: { pcm16: Int16Array; pauseBefore: number; stats: ChunkStats; turn: number }[] = []
+    const parts: { pcm16: Int16Array; pauseBefore: number; stats: ChunkStats; line: number; speaker: SpeakerNumber }[] = []
     let timer: ReturnType<typeof setTimeout> | undefined
     startedAt.current = now()
     const since = () => (now() - startedAt.current) / 1000
@@ -242,7 +248,7 @@ export function SpeakTab({ active, visited, cache }: Props) {
           const pcm = limitPeak(c.pcm)
           const seconds = pcm.length / SAMPLE_RATE
           plan[c.index].done = { seconds, readyAt: since(), genSeconds: stats.ms / 1000 }
-          parts.push({ pcm16: toPcm16(pcm), pauseBefore: plan[c.index].pause, stats, turn: chunks[c.index].turn })
+          parts.push({ pcm16: toPcm16(pcm), pauseBefore: plan[c.index].pause, stats, line: chunks[c.index].line, speaker: chunks[c.index].speaker })
           p.push(pcm, plan[c.index].pause)
           setLive((l) => l && { ...l, done: c.index + 1 })
           maybeStart()
@@ -253,10 +259,13 @@ export function SpeakTab({ active, visited, cache }: Props) {
       const seconds = parts.reduce((n, x, i) => n + x.pcm16.length / SAMPLE_RATE + (i ? x.pauseBefore : 0), 0)
       const audio = parts.reduce((n, x) => n + x.stats.audioSeconds, 0)
       const ms = Math.round(since() * 1000)
+      const finished = new Date()
+      const zip = linesZip(parts, SAMPLE_RATE, conversation, chunks[chunks.length - 1].line + 1, finished)
       setClip({
         id: ++clipId.current,
         url: URL.createObjectURL(wavFromParts(parts, SAMPLE_RATE)),
-        fileName: speechFileName(),
+        fileName: speechFileName(finished),
+        zip: zip && { url: URL.createObjectURL(zip), fileName: speechFileName(finished, 'zip'), lines: new Set(parts.map((x) => x.line)).size, per: conversation ? 'turn' : 'paragraph' },
         seconds,
         synth: stats ?? { chunks: parts.length, ms, firstAudioMs: 0, audioSeconds: audio, rtf: audio > 0 ? ms / 1000 / audio : 0 },
         parts: parts.length,
@@ -511,6 +520,17 @@ export function SpeakTab({ active, visited, cache }: Props) {
                 <a href={clip.url} download={clip.fileName} aria-label="Download WAV" className={buttonVariants({ variant: 'outline', className: 'h-9 gap-2' })}>
                   <Download className="size-4" /> <span className="hidden sm:inline">Download WAV</span>
                 </a>
+                {clip.zip && (
+                  <a
+                    href={clip.zip.url}
+                    download={clip.zip.fileName}
+                    aria-label={`Download lines (.zip, ${clip.zip.lines} files)`}
+                    title={`One WAV per ${clip.zip.per}, numbered in order`}
+                    className={buttonVariants({ variant: 'outline', className: 'h-9 gap-2' })}
+                  >
+                    <FileArchive className="size-4" /> <span className="hidden sm:inline">Download lines (.zip)</span>
+                  </a>
+                )}
               </div>
               <Stats
                 items={[

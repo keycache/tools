@@ -94,9 +94,9 @@ export function limitPeak(pcm: Float32Array, ceiling = PEAK_CEILING): Float32Arr
 }
 
 /** `speech-20261115-142130.wav` (local time). */
-export function speechFileName(date = new Date()): string {
+export function speechFileName(date = new Date(), ext = 'wav'): string {
   const p = (n: number) => String(n).padStart(2, '0')
-  return `speech-${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}-${p(date.getHours())}${p(date.getMinutes())}${p(date.getSeconds())}.wav`
+  return `speech-${date.getFullYear()}${p(date.getMonth() + 1)}${p(date.getDate())}-${p(date.getHours())}${p(date.getMinutes())}${p(date.getSeconds())}.${ext}`
 }
 
 /** True when the clip has no usable signal (peak below −40 dBFS), e.g. a muted microphone. */
@@ -129,10 +129,10 @@ export function toPcm16(pcm: Float32Array): Int16Array {
 }
 
 /**
- * 16-bit mono WAV from parts with `pauseBefore` seconds of silence before each (none before the first). The Blob is
- * assembled from the parts directly — no joined copy of the whole audio is made in JS memory.
+ * 16-bit mono WAV from parts with `pauseBefore` seconds of silence before each (none before the first), as byte views:
+ * a 44-byte header, then the parts' own buffers and shared silence — no joined copy of the audio. For Blobs and zips.
  */
-export function wavFromParts(parts: { pcm16: Int16Array; pauseBefore: number }[], sampleRate: number): Blob {
+export function wavPieces(parts: { pcm16: Int16Array; pauseBefore: number }[], sampleRate: number): Uint8Array<ArrayBuffer>[] {
   const gaps = parts.map((p, i) => (i === 0 ? 0 : Math.round(p.pauseBefore * sampleRate)))
   const samples = parts.reduce((n, p, i) => n + gaps[i] + p.pcm16.length, 0)
   const header = new ArrayBuffer(44)
@@ -151,14 +151,19 @@ export function wavFromParts(parts: { pcm16: Int16Array; pauseBefore: number }[]
   v.setUint16(34, 16, true)
   str(36, 'data')
   v.setUint32(40, samples * 2, true)
-  const silence = new Map<number, Int16Array>()
-  const pieces: BlobPart[] = [header]
+  const silence = new Map<number, Uint8Array<ArrayBuffer>>()
+  const pieces: Uint8Array<ArrayBuffer>[] = [new Uint8Array(header)]
   parts.forEach((p, i) => {
     if (gaps[i] > 0) {
-      if (!silence.has(gaps[i])) silence.set(gaps[i], new Int16Array(gaps[i]))
-      pieces.push(silence.get(gaps[i]) as Int16Array<ArrayBuffer>)
+      if (!silence.has(gaps[i])) silence.set(gaps[i], new Uint8Array(gaps[i] * 2))
+      pieces.push(silence.get(gaps[i]) as Uint8Array<ArrayBuffer>)
     }
-    pieces.push(p.pcm16 as Int16Array<ArrayBuffer>)
+    pieces.push(new Uint8Array(p.pcm16.buffer as ArrayBuffer, p.pcm16.byteOffset, p.pcm16.byteLength))
   })
-  return new Blob(pieces, { type: 'audio/wav' })
+  return pieces
+}
+
+/** {@link wavPieces} as a WAV Blob (the browser copies the pieces; nothing is joined in JS memory first). */
+export function wavFromParts(parts: { pcm16: Int16Array; pauseBefore: number }[], sampleRate: number): Blob {
+  return new Blob(wavPieces(parts, sampleRate), { type: 'audio/wav' })
 }
