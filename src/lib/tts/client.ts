@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react'
 import { SAMPLE_RATE, type TtsDevice, type TtsDtype } from './constants'
 import { notifyTtsCacheChanged } from './hooks'
 import type { TtsErrorCode, TtsRequest, TtsResponse } from './protocol'
-import type { AudioChunk, ChunkStats, SynthStats } from './types'
+import type { AudioChunk, ChunkStats, SynthChunk, SynthStats } from './types'
 
 export type TtsStatus = 'idle' | 'loading' | 'ready' | 'error'
 
@@ -158,10 +158,10 @@ class TtsClient {
   }
 
   /** Generates `chunks` in order; `onChunk` receives each one as soon as it's ready. Resolves when done or stopped. */
-  async synthesize(chunks: string[], voiceId: string, exaggeration: number, onChunk: (chunk: AudioChunk, stats: ChunkStats) => void): Promise<SynthDone> {
+  async synthesize(chunks: SynthChunk[], voiceId: string, onChunk: (chunk: AudioChunk, stats: ChunkStats) => void): Promise<SynthDone> {
     this.assertReady()
     if (this.state.job) throw new TtsError('busy', 'Speech is already being generated.')
-    const { id, done } = this.call<SynthDone>({ type: 'synthesize', chunks, voiceId, exaggeration }, { onChunk })
+    const { id, done } = this.call<SynthDone>({ type: 'synthesize', chunks, voiceId }, { onChunk })
     this.set({ job: { id, done: 0, total: chunks.length } })
     try {
       return await this.guard(done)

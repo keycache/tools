@@ -1,5 +1,5 @@
 import type { TtsDevice, TtsDtype } from './constants'
-import type { ChunkStats, SynthStats } from './types'
+import type { ChunkStats, SynthChunk, SynthStats } from './types'
 
 export type TtsErrorCode = 'unsupported' | 'quota' | 'network' | 'device-lost' | 'busy' | 'not-loaded' | 'no-voice' | 'unknown'
 
@@ -9,8 +9,8 @@ export type TtsRequest =
   | { id: number; type: 'encodeVoice'; voiceId: string; pcm: Float32Array }
   /** A built-in clip (site asset): read from / stored in Speak's OPFS cache, encoded once per worker as `voiceId`. */
   | { id: number; type: 'encodeBuiltin'; voiceId: string; url: string }
-  /** Texts are generated in order, one `chunk` response each. */
-  | { id: number; type: 'synthesize'; chunks: string[]; voiceId: string; exaggeration: number }
+  /** Chunks are generated in order (each with its own exaggeration), one `chunk` response each. */
+  | { id: number; type: 'synthesize'; chunks: SynthChunk[]; voiceId: string }
   /** Interrupts the in-flight synthesize; its partial chunk is dropped. */
   | { id: number; type: 'stop' }
   | { id: number; type: 'unload' }

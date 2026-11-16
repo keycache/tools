@@ -11,6 +11,12 @@ export interface TtsModelInfo {
   capabilities: { voiceCloning: boolean; exaggeration: boolean; maxCharsPerChunk: number }
 }
 
+/** One generate call's input. */
+export interface SynthChunk {
+  text: string
+  exaggeration: number
+}
+
 /** One generated piece of audio, in text order. */
 export interface AudioChunk {
   pcm: Float32Array

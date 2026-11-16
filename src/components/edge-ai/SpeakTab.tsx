@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AudioLines, Download, Square, VolumeX } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { ModelGate, type ModelSource } from '@/components/edge-ai/ModelGate'
+import { ScriptNotes } from '@/components/edge-ai/ScriptNotes'
 import { DeviceSummary, ErrorNote, Stats } from '@/components/edge-ai/shared'
 import type { CapturedAudio } from '@/components/edge-ai/useAudioCapture'
 import { useHiddenWhile, usePageHidden } from '@/components/edge-ai/useHiddenWhile'
@@ -11,7 +12,6 @@ import { encodeWav } from '@/lib/cactus/media'
 import type { Capability } from '@/lib/transformers/capability'
 import { ORT_RUNTIME_BYTES } from '@/lib/transformers/constants'
 import { isSilent, limitPeak, speechFileName, toPcm16, trimTo, wavFromParts } from '@/lib/tts/audio'
-import { PAUSE_SECONDS, splitIntoChunks } from '@/lib/tts/chunk'
 import { TtsError, tts, useTts, type TtsState } from '@/lib/tts/client'
 import {
   DEFAULT_EXAGGERATION,
@@ -26,6 +26,7 @@ import {
 } from '@/lib/tts/constants'
 import { useTtsCapability, type TtsCacheState } from '@/lib/tts/hooks'
 import { MAX_START_WAIT_SECONDS, SpeechPlayer, playbackStartAt, type PlannedChunk } from '@/lib/tts/playback'
+import { formatDuration, hasErrors, parseScript, planChunks } from '@/lib/tts/script'
 import type { ChunkStats, SynthStats } from '@/lib/tts/types'
 import {
   CUSTOM_VOICE,
@@ -135,8 +136,11 @@ export function SpeakTab({ active, visited, cache }: Props) {
   const pageHidden = usePageHidden()
   const chars = text.trim().length
   const tooLong = chars > MAX_CHARS
+  const script = useMemo(() => parseScript(text, { mode: 'single' }), [text])
+  const scriptErrors = hasErrors(script)
+  const textRef = useRef<HTMLTextAreaElement>(null)
   const custom = choice === CUSTOM_VOICE
-  const canSpeak = ready && !busy && !preparing && chars > 0 && !tooLong && (!custom || !!voice)
+  const canSpeak = ready && !busy && !preparing && script.turns.length > 0 && !tooLong && !scriptErrors && (!custom || !!voice)
 
   // Release the previous clip's blob URL when it's replaced or the tab unmounts.
   useEffect(() => {
@@ -256,6 +260,16 @@ export function SpeakTab({ active, visited, cache }: Props) {
     setVoiceError(null)
   }
 
+  /** Selects `line` (1-based) in the text box, e.g. from a marker diagnostic. */
+  function jumpToLine(line: number) {
+    const el = textRef.current
+    if (!el) return
+    const lines = el.value.split('\n')
+    const start = lines.slice(0, line - 1).reduce((n, l) => n + l.length + 1, 0)
+    el.focus()
+    el.setSelectionRange(start, start + (lines[line - 1]?.length ?? 0))
+  }
+
   function stopPlayback() {
     player.current?.stop()
     player.current = null
@@ -269,7 +283,7 @@ export function SpeakTab({ active, visited, cache }: Props) {
 
   async function speak() {
     if (!canSpeak) return
-    const chunks = splitIntoChunks(text)
+    const chunks = planChunks(script, exaggeration)
     if (!chunks.length) return
     setError(null)
     // Created inside the click so the browser lets it play; the previous generation's playback stops.
@@ -289,7 +303,7 @@ export function SpeakTab({ active, visited, cache }: Props) {
     const builtinLabel = builtinVoice(choice)?.label
     const voiceLabel = custom ? 'your voice' : builtinLabel ? `${builtinLabel} voice` : 'default voice'
 
-    const plan: PlannedChunk[] = chunks.map((c, i) => ({ pause: i === 0 ? 0 : PAUSE_SECONDS[c.pause], chars: c.text.length }))
+    const plan: PlannedChunk[] = chunks.map((c) => ({ pause: c.pause, chars: c.text.length }))
     // Finished parts as 16-bit PCM (half the memory of Float32); the float copy only goes to the player.
     const parts: { pcm16: Int16Array; pauseBefore: number; stats: ChunkStats }[] = []
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -318,9 +332,8 @@ export function SpeakTab({ active, visited, cache }: Props) {
 
     const run = () =>
       tts.synthesize(
-        chunks.map((c) => c.text),
+        chunks.map((c) => ({ text: c.text, exaggeration: c.exaggeration })),
         voiceId,
-        exaggeration,
         (c, stats) => {
           const pcm = limitPeak(c.pcm)
           const seconds = pcm.length / SAMPLE_RATE
@@ -421,11 +434,15 @@ export function SpeakTab({ active, visited, cache }: Props) {
             <label htmlFor="speak-text" className="text-sm font-medium">
               Text
             </label>
-            <span id="speak-count" className={`text-xs tabular-nums ${tooLong ? 'text-destructive' : 'text-muted-foreground'}`}>
-              {chars.toLocaleString()} / {MAX_CHARS.toLocaleString()}
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {script.turns.length > 0 && <span id="speak-summary">about {formatDuration(script.summary.estSeconds)} of audio · </span>}
+              <span id="speak-count" className={tooLong ? 'text-destructive' : undefined}>
+                {chars.toLocaleString()} / {MAX_CHARS.toLocaleString()}
+              </span>
             </span>
           </div>
           <textarea
+            ref={textRef}
             id="speak-text"
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -435,8 +452,8 @@ export function SpeakTab({ active, visited, cache }: Props) {
                 void speak()
               }
             }}
-            aria-describedby="speak-count speak-hint"
-            aria-invalid={tooLong}
+            aria-describedby="speak-count speak-notes speak-hint"
+            aria-invalid={tooLong || scriptErrors}
             placeholder={ready ? 'Type or paste text to hear it…' : 'Type or paste text — load Chatterbox above to hear it.'}
             className="min-h-0 w-full flex-1 resize-none rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
           />
@@ -455,6 +472,7 @@ export function SpeakTab({ active, visited, cache }: Props) {
             disabled={busy || (custom && preparing)}
           />
         </div>
+        <ScriptNotes id="speak-notes" diagnostics={script.diagnostics} onJump={jumpToLine} />
 
         <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
           <label className="flex items-center gap-2 text-sm">
@@ -541,7 +559,8 @@ export function SpeakTab({ active, visited, cache }: Props) {
           <p id="speak-hint">
             Up to {MAX_CHARS.toLocaleString()} characters, spoken sentence by sentence. Playback starts within about{' '}
             {MAX_START_WAIT_SECONDS} s; on long texts it may pause between parts while generation catches up · Ctrl/⌘+Enter to speak ·
-            Esc to stop. Higher exaggeration sounds more expressive and a little faster.
+            Esc to stop. Higher exaggeration sounds more expressive and a little faster. Markers: [pause 1.5s] or [pause 500ms]
+            adds silence; [exaggeration 0.8] sets it for that line.
           </p>
           {capability && <DeviceSummary capability={capability} />}
         </div>

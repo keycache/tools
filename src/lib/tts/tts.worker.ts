@@ -20,7 +20,7 @@ import {
   type TtsDtype,
 } from './constants'
 import type { TtsErrorCode, TtsRequest, TtsResponse } from './protocol'
-import type { ChunkStats } from './types'
+import type { ChunkStats, SynthChunk } from './types'
 
 // The app's tsconfig uses the DOM lib; type only the worker globals we use.
 interface WorkerScope {
@@ -120,7 +120,7 @@ function load(id: number, device: TtsDevice, dtype: TtsDtype): Promise<void> {
   return loading
 }
 
-async function synthesize(id: number, chunks: string[], voiceId: string, exaggeration: number): Promise<void> {
+async function synthesize(id: number, chunks: SynthChunk[], voiceId: string): Promise<void> {
   const mdl = model
   const proc = processor
   if (!mdl || !proc) throw coded('not-loaded', 'Load the model first.')
@@ -134,7 +134,7 @@ async function synthesize(id: number, chunks: string[], voiceId: string, exagger
   let done = 0
   try {
     // One generate call: the waveform and how many speech tokens it took (null if Stop interrupted it).
-    const generateOne = async (text: string): Promise<{ pcm: Float32Array; tokens: number } | null> => {
+    const generateOne = async (text: string, exaggeration: number): Promise<{ pcm: Float32Array; tokens: number } | null> => {
       const inputs = await proc(text)
       let calls = 0
       // generate() calls put() once for the prompt, then once per generated token.
@@ -154,16 +154,16 @@ async function synthesize(id: number, chunks: string[], voiceId: string, exagger
 
     for (let index = 0; index < chunks.length && !criteria.interrupted; index++) {
       const t = performance.now()
-      const text = chunks[index]
-      let result = await generateOne(text)
+      const { text, exaggeration } = chunks[index]
+      let result = await generateOne(text, exaggeration)
       if (!result) break
       let hitCap = result.tokens >= MAX_NEW_TOKENS
       let resplit = false
       // Hit the token cap: the speech is probably cut off. Regenerate it once as two halves and join them.
       const halves = hitCap ? splitInHalf(text) : null
       if (halves) {
-        const a = await generateOne(halves[0])
-        const b = a && (await generateOne(halves[1]))
+        const a = await generateOne(halves[0], exaggeration)
+        const b = a && (await generateOne(halves[1], exaggeration))
         if (!a || !b) break
         const gap = Math.round(RESPLIT_GAP_SECONDS * SAMPLE_RATE)
         const pcm = new Float32Array(a.pcm.length + gap + b.pcm.length)
@@ -226,7 +226,7 @@ scope.onmessage = async (e: MessageEvent<TtsRequest>) => {
       }
       case 'synthesize':
         if (current) throw coded('busy', 'Speech is already being generated.')
-        await synthesize(msg.id, msg.chunks, msg.voiceId, msg.exaggeration)
+        await synthesize(msg.id, msg.chunks, msg.voiceId)
         return
       case 'stop':
         current?.criteria?.interrupt()
