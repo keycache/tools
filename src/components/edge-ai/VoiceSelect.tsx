@@ -1,5 +1,5 @@
 import { Play, Square, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { AudioButtons } from '@/components/edge-ai/AudioInput'
 import { Select } from '@/components/edge-ai/shared'
 import { useAudioCapture, type CapturedAudio } from '@/components/edge-ai/useAudioCapture'
@@ -24,6 +24,14 @@ export interface ReferenceClip {
 export const MIN_GOOD_REFERENCE_SECONDS = 3
 
 interface Props {
+  /** Id of the select (other ids derive from it). */
+  id?: string
+  /** Shown before the dropdown, e.g. "Voice" or "Speaker 2". */
+  label?: string
+  /** Card height etc. (default h-44). */
+  className?: string
+  /** Extra controls at the bottom of the card (e.g. a speaker's exaggeration). */
+  footer?: ReactNode
   choice: VoiceChoice
   onChoiceChange: (choice: VoiceChoice) => void
   /** The user's own clip (shown when "Your voice…" is chosen). */
@@ -72,7 +80,7 @@ function usePreview() {
  * Voice dropdown: the model's default voice, the built-in voices, or "Your voice…" (upload / record / drop).
  * Fixed height so switching never shifts the page.
  */
-export function VoiceSelect({ choice, onChoiceChange, clip, onAudio, onRemove, status, error, disabled }: Props) {
+export function VoiceSelect({ id = 'speak-voice', label = 'Voice', className, footer, choice, onChoiceChange, clip, onAudio, onRemove, status, error, disabled }: Props) {
   const capture = useAudioCapture(onAudio, disabled, { sampleRate: SAMPLE_RATE })
   const [dragging, setDragging] = useState(false)
   const preview = usePreview()
@@ -84,8 +92,8 @@ export function VoiceSelect({ choice, onChoiceChange, clip, onAudio, onRemove, s
 
   return (
     <section
-      aria-label="Voice"
-      className={cn('flex h-44 flex-col gap-2 rounded-xl border px-3 py-2.5', dragging && 'border-primary bg-primary/5')}
+      aria-label={label}
+      className={cn('flex h-44 flex-col gap-2 rounded-xl border px-3 py-2.5', className, dragging && 'border-primary bg-primary/5')}
       onDragOver={(e) => {
         if (!custom || !capture.canAccept) return
         e.preventDefault()
@@ -100,18 +108,18 @@ export function VoiceSelect({ choice, onChoiceChange, clip, onAudio, onRemove, s
       }}
     >
       <div className="flex items-center gap-2">
-        <label htmlFor="speak-voice" className="text-sm font-medium">
-          Voice
+        <label htmlFor={id} className="shrink-0 text-sm font-medium">
+          {label}
         </label>
         <Select
-          id="speak-voice"
+          id={id}
           value={choice}
           onChange={(e) => {
             preview.stop()
             onChoiceChange(e.target.value)
           }}
           disabled={disabled || capture.recording}
-          aria-describedby="speak-voice-info"
+          aria-describedby={`${id}-info`}
           wrapperClassName="min-w-0 flex-1"
           className="h-8 w-full truncate pl-2.5"
         >
@@ -131,7 +139,7 @@ export function VoiceSelect({ choice, onChoiceChange, clip, onAudio, onRemove, s
         </Select>
       </div>
 
-      <div id="speak-voice-info" className="min-h-0 flex-1 text-xs text-muted-foreground">
+      <div id={`${id}-info`} className="min-h-0 flex-1 overflow-y-auto text-xs text-muted-foreground">
         {!custom && info ? (
           <div className="space-y-1.5">
             <div className="flex items-center gap-2">
@@ -142,7 +150,7 @@ export function VoiceSelect({ choice, onChoiceChange, clip, onAudio, onRemove, s
                   size="sm"
                   className="gap-1.5"
                   onClick={() => (preview.playing ? preview.stop() : void preview.play(previewUrl))}
-                  aria-label={`${preview.playing ? 'Stop preview of' : 'Preview'} ${info.label} voice`}
+                  aria-label={`${preview.playing ? 'Stop preview of' : 'Preview'} ${info.label} voice${label === 'Voice' ? '' : ` (${label})`}`}
                 >
                   {preview.playing ? <Square className="size-3.5" /> : <Play className="size-3.5" />}
                   {preview.playing ? 'Stop' : 'Preview'}
@@ -165,7 +173,7 @@ export function VoiceSelect({ choice, onChoiceChange, clip, onAudio, onRemove, s
           <div className="space-y-1.5">
             <div className="flex items-center gap-2">
               <audio controls src={clip.url} className="h-8 min-w-0 flex-1" aria-label={`Your voice clip: ${clip.name}`} />
-              <Button type="button" variant="ghost" size="icon-sm" onClick={onRemove} disabled={disabled} aria-label="Remove voice clip">
+              <Button type="button" variant="ghost" size="icon-sm" onClick={onRemove} disabled={disabled} aria-label={`Remove voice clip${label === 'Voice' ? '' : ` (${label})`}`}>
                 <X className="size-4" />
               </Button>
             </div>
@@ -190,6 +198,7 @@ export function VoiceSelect({ choice, onChoiceChange, clip, onAudio, onRemove, s
         )}
       </div>
 
+      {footer}
       {custom && (
         <p className="text-[11px] leading-snug text-muted-foreground">
           Only use voices you have permission to use. Your clip stays on this device and isn't saved.

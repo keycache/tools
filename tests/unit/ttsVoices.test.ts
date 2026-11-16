@@ -4,7 +4,16 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { parseWav } from '@/lib/tts/audio'
 import { DEFAULT_VOICE_ID, MAX_REFERENCE_SECONDS, SAMPLE_RATE } from '@/lib/tts/constants'
-import { BUILTIN_VOICES, VOICE_STORAGE_KEY, builtinVoiceUrl, isStaleVoiceUrl, loadVoiceChoice, saveVoiceChoice } from '@/lib/tts/voices'
+import {
+  BUILTIN_VOICES,
+  DEFAULT_SPEAKER_VOICES,
+  VOICE_STORAGE_KEY,
+  builtinVoiceUrl,
+  isStaleVoiceUrl,
+  loadVoiceChoice,
+  saveVoiceChoice,
+  speakerVoiceKey,
+} from '@/lib/tts/voices'
 
 // Built-in voices (Phase S9/S10, docs/SPECIFICATIONS.md §S17–S18): the bundled manifest must match the shipped clips.
 const dir = 'public/voices'
@@ -56,18 +65,27 @@ describe('built-in voices manifest', () => {
 describe('built-in voice helpers', () => {
   const memory = () => {
     const m = new Map<string, string>()
-    return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k), m }
+    return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), m }
   }
 
-  it('remembers a built-in choice, forgets it for the default, and never stores the custom voice', () => {
+  it('remembers built-in and default choices per key, never the custom voice', () => {
     const s = memory()
     saveVoiceChoice(voices[0].id, s)
     expect(loadVoiceChoice(s)).toBe(voices[0].id)
     saveVoiceChoice('custom', s)
     expect(loadVoiceChoice(s)).toBe(voices[0].id)
     saveVoiceChoice(DEFAULT_VOICE_ID, s)
-    expect(s.m.has(VOICE_STORAGE_KEY)).toBe(false)
-    expect(loadVoiceChoice(s)).toBe(DEFAULT_VOICE_ID)
+    expect(s.m.get(VOICE_STORAGE_KEY)).toBe(DEFAULT_VOICE_ID)
+    // A speaker key falls back to its own default until something is stored, and keeps an explicit Default.
+    expect(loadVoiceChoice(s, speakerVoiceKey(2), DEFAULT_SPEAKER_VOICES[2])).toBe(DEFAULT_SPEAKER_VOICES[2])
+    saveVoiceChoice(DEFAULT_VOICE_ID, s, speakerVoiceKey(2))
+    expect(loadVoiceChoice(s, speakerVoiceKey(2), DEFAULT_SPEAKER_VOICES[2])).toBe(DEFAULT_VOICE_ID)
+  })
+
+  it('has distinct, existing default voices for the four speakers', () => {
+    const ids = Object.values(DEFAULT_SPEAKER_VOICES)
+    expect(new Set(ids).size).toBe(4)
+    for (const id of ids) expect(voices.some((v) => v.id === id)).toBe(true)
   })
 
   it('falls back to the default for a removed voice or unavailable storage', () => {

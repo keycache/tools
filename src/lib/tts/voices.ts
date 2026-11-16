@@ -61,20 +61,33 @@ export function voicePreviewUrl(choice: VoiceChoice): string | null {
 
 /** Remembered dropdown choice (built-in or default only — uploaded audio is never stored). */
 export const VOICE_STORAGE_KEY = 'edge-ai-speak:voice'
+/** Conversation mode: one remembered choice per speaker. */
+export const speakerVoiceKey = (speaker: number) => `${VOICE_STORAGE_KEY}:s${speaker}`
 
-export function loadVoiceChoice(storage: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage): VoiceChoice {
+/** Distinct built-in voices for a new conversation's speakers 1–4 (alternating female / male). */
+export const DEFAULT_SPEAKER_VOICES: Record<1 | 2 | 3 | 4, VoiceChoice> = {
+  1: 'f-american-1',
+  2: 'm-american-2',
+  3: 'f-english-1',
+  4: 'm-australian-1',
+}
+
+export function loadVoiceChoice(
+  storage: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage,
+  key = VOICE_STORAGE_KEY,
+  fallback: VoiceChoice = DEFAULT_VOICE_ID,
+): VoiceChoice {
   try {
-    const id = storage?.getItem(VOICE_STORAGE_KEY)
-    return id && builtinVoice(id) ? id : DEFAULT_VOICE_ID
+    const id = storage?.getItem(key)
+    return id && (id === DEFAULT_VOICE_ID || builtinVoice(id)) ? id : fallback
   } catch {
-    return DEFAULT_VOICE_ID
+    return fallback
   }
 }
 
-export function saveVoiceChoice(choice: VoiceChoice, storage: Pick<Storage, 'setItem' | 'removeItem'> | undefined = globalThis.localStorage): void {
+export function saveVoiceChoice(choice: VoiceChoice, storage: Pick<Storage, 'setItem'> | undefined = globalThis.localStorage, key = VOICE_STORAGE_KEY): void {
   try {
-    if (builtinVoice(choice)) storage?.setItem(VOICE_STORAGE_KEY, choice)
-    else if (choice === DEFAULT_VOICE_ID) storage?.removeItem(VOICE_STORAGE_KEY)
+    if (choice === DEFAULT_VOICE_ID || builtinVoice(choice)) storage?.setItem(key, choice)
   } catch {
     // Private mode / storage disabled: the choice just isn't remembered.
   }

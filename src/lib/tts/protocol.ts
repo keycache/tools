@@ -9,8 +9,8 @@ export type TtsRequest =
   | { id: number; type: 'encodeVoice'; voiceId: string; pcm: Float32Array }
   /** A built-in clip (site asset): read from / stored in Speak's OPFS cache, encoded once per worker as `voiceId`. */
   | { id: number; type: 'encodeBuiltin'; voiceId: string; url: string }
-  /** Chunks are generated in order (each with its own exaggeration), one `chunk` response each. */
-  | { id: number; type: 'synthesize'; chunks: SynthChunk[]; voiceId: string }
+  /** Chunks are generated in order (each with its own voice and exaggeration), one `chunk` response each. */
+  | { id: number; type: 'synthesize'; chunks: SynthChunk[] }
   /** Interrupts the in-flight synthesize; its partial chunk is dropped. */
   | { id: number; type: 'stop' }
   | { id: number; type: 'unload' }

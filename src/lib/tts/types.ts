@@ -15,6 +15,8 @@ export interface TtsModelInfo {
 export interface SynthChunk {
   text: string
   exaggeration: number
+  /** Speaker-cache id of the voice (conversations switch voices between chunks). */
+  voiceId: string
 }
 
 /** One generated piece of audio, in text order. */

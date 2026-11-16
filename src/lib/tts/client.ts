@@ -158,10 +158,10 @@ class TtsClient {
   }
 
   /** Generates `chunks` in order; `onChunk` receives each one as soon as it's ready. Resolves when done or stopped. */
-  async synthesize(chunks: SynthChunk[], voiceId: string, onChunk: (chunk: AudioChunk, stats: ChunkStats) => void): Promise<SynthDone> {
+  async synthesize(chunks: SynthChunk[], onChunk: (chunk: AudioChunk, stats: ChunkStats) => void): Promise<SynthDone> {
     this.assertReady()
     if (this.state.job) throw new TtsError('busy', 'Speech is already being generated.')
-    const { id, done } = this.call<SynthDone>({ type: 'synthesize', chunks, voiceId }, { onChunk })
+    const { id, done } = this.call<SynthDone>({ type: 'synthesize', chunks }, { onChunk })
     this.set({ job: { id, done: 0, total: chunks.length } })
     try {
       return await this.guard(done)
