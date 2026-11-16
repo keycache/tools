@@ -24,4 +24,6 @@ dist-ssr
 *.sw?
 .data/
 *.wav
+# Speak's built-in reference voices ship with the site (docs/SPECIFICATIONS.md §S17)
+!public/voices/*.wav
 .venv/

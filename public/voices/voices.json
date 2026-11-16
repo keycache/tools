@@ -1,0 +1,207 @@
+[
+  {
+    "id": "f-american-1",
+    "label": "Female \u00b7 American",
+    "gender": "female",
+    "accent": "American",
+    "pitch": "low",
+    "description": "low pitch, brisk pace, audiobook narration",
+    "file": "f-american-1.wav",
+    "seconds": 9.68,
+    "bytes": 464684,
+    "source": {
+      "dataset": "LibriTTS-R",
+      "speaker": "8463",
+      "utterances": [
+        "8463_287645_000018_000001"
+      ]
+    },
+    "licence": "CC BY 4.0"
+  },
+  {
+    "id": "f-english-1",
+    "label": "Female \u00b7 English",
+    "gender": "female",
+    "accent": "English",
+    "pitch": "high",
+    "age": 24,
+    "description": "high pitch, measured pace",
+    "file": "f-english-1.wav",
+    "seconds": 8.51,
+    "bytes": 408426,
+    "source": {
+      "dataset": "VCTK 0.92",
+      "speaker": "p276",
+      "utterances": [
+        "p276_057_mic1",
+        "p276_070_mic1"
+      ]
+    },
+    "licence": "CC BY 4.0"
+  },
+  {
+    "id": "f-indian-1",
+    "label": "Female \u00b7 Indian",
+    "gender": "female",
+    "accent": "Indian",
+    "pitch": "high",
+    "age": 23,
+    "description": "high pitch, measured pace",
+    "file": "f-indian-1.wav",
+    "seconds": 8.29,
+    "bytes": 398190,
+    "source": {
+      "dataset": "VCTK 0.92",
+      "speaker": "p248",
+      "utterances": [
+        "p248_058_mic1",
+        "p248_062_mic1",
+        "p248_063_mic1"
+      ]
+    },
+    "licence": "CC BY 4.0"
+  },
+  {
+    "id": "f-irish-1",
+    "label": "Female \u00b7 Irish",
+    "gender": "female",
+    "accent": "Irish",
+    "pitch": "mid",
+    "age": 22,
+    "description": "mid pitch, measured pace",
+    "file": "f-irish-1.wav",
+    "seconds": 8.09,
+    "bytes": 388562,
+    "source": {
+      "dataset": "VCTK 0.92",
+      "speaker": "p288",
+      "utterances": [
+        "p288_075_mic1",
+        "p288_080_mic1"
+      ]
+    },
+    "licence": "CC BY 4.0"
+  },
+  {
+    "id": "f-scottish-1",
+    "label": "Female \u00b7 Scottish",
+    "gender": "female",
+    "accent": "Scottish",
+    "pitch": "low",
+    "age": 23,
+    "description": "low pitch, measured pace",
+    "file": "f-scottish-1.wav",
+    "seconds": 8.36,
+    "bytes": 401306,
+    "source": {
+      "dataset": "VCTK 0.92",
+      "speaker": "p262",
+      "utterances": [
+        "p262_055_mic1",
+        "p262_062_mic1"
+      ]
+    },
+    "licence": "CC BY 4.0"
+  },
+  {
+    "id": "m-american-1",
+    "label": "Male \u00b7 American",
+    "gender": "male",
+    "accent": "American",
+    "pitch": "high",
+    "description": "high pitch, brisk pace, audiobook narration",
+    "file": "m-american-1.wav",
+    "seconds": 9.28,
+    "bytes": 445484,
+    "source": {
+      "dataset": "LibriTTS-R",
+      "speaker": "2300",
+      "utterances": [
+        "2300_131720_000024_000004"
+      ]
+    },
+    "licence": "CC BY 4.0"
+  },
+  {
+    "id": "m-american-2",
+    "label": "Male \u00b7 American",
+    "gender": "male",
+    "accent": "American",
+    "pitch": "mid",
+    "description": "mid pitch, brisk pace, audiobook narration",
+    "file": "m-american-2.wav",
+    "seconds": 8.04,
+    "bytes": 385964,
+    "source": {
+      "dataset": "LibriTTS-R",
+      "speaker": "8455",
+      "utterances": [
+        "8455_210777_000003_000000"
+      ]
+    },
+    "licence": "CC BY 4.0"
+  },
+  {
+    "id": "m-australian-1",
+    "label": "Male \u00b7 Australian",
+    "gender": "male",
+    "accent": "Australian",
+    "pitch": "low",
+    "age": 26,
+    "description": "low pitch, even pace",
+    "file": "m-australian-1.wav",
+    "seconds": 8.34,
+    "bytes": 400426,
+    "source": {
+      "dataset": "VCTK 0.92",
+      "speaker": "p326",
+      "utterances": [
+        "p326_062_mic1",
+        "p326_087_mic1"
+      ]
+    },
+    "licence": "CC BY 4.0"
+  },
+  {
+    "id": "m-english-1",
+    "label": "Male \u00b7 English",
+    "gender": "male",
+    "accent": "English",
+    "pitch": "mid",
+    "age": 23,
+    "description": "mid pitch, even pace",
+    "file": "m-english-1.wav",
+    "seconds": 8.39,
+    "bytes": 402768,
+    "source": {
+      "dataset": "VCTK 0.92",
+      "speaker": "p232",
+      "utterances": [
+        "p232_061_mic1",
+        "p232_104_mic1"
+      ]
+    },
+    "licence": "CC BY 4.0"
+  },
+  {
+    "id": "m-indian-1",
+    "label": "Male \u00b7 Indian",
+    "gender": "male",
+    "accent": "Indian",
+    "pitch": "mid",
+    "age": 26,
+    "description": "mid pitch, even pace",
+    "file": "m-indian-1.wav",
+    "seconds": 8.59,
+    "bytes": 412156,
+    "source": {
+      "dataset": "VCTK 0.92",
+      "speaker": "p251",
+      "utterances": [
+        "p251_049_mic1",
+        "p251_080_mic1"
+      ]
+    },
+    "licence": "CC BY 4.0"
+  }
+]

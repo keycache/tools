@@ -249,3 +249,17 @@ const [selectedSound, setSelectedSound] = useState(() => {
 **Solution**: It's the browser, not the app. This Electron build's `MediaRecorder` produces WebM/Opus, WebM/PCM or MP4/Opus, but neither `decodeAudioData` nor an `<audio>` element can play any of them (`MEDIA_ERR_SRC_NOT_SUPPORTED`); WAV decodes fine. Verify recording in desktop Chrome; in the integrated browser, test the UI flow by stubbing `MediaRecorder` (a class whose `stop()` emits a WAV blob via `ondataavailable` + `onstop`) and `navigator.mediaDevices.getUserMedia`.
 **Missteps**: (1) Suspected the fake microphone (an `AudioContext` → `MediaStreamDestination` playing a WAV); (2) re-tested decoding at 16/24/48 kHz; (3) recorded a plain oscillator with explicit mime types — all failed the same way, which isolated the codec support. ffmpeg isn't installed here, so a known-good Opus file couldn't be produced for a cross-check.
 **Key Insight**: When a media failure also hits code that hasn't changed, test the browser's codec support in isolation (record → `decodeAudioData` and `<audio>` in the same page) before debugging the app.
+
+## Judging voice-clone quality (Chatterbox reference clips)
+**Problem**: Picking built-in reference voices with a "clone similarity ≥ 0.85" gate (speaker-embedding cosine
+between the reference and a generated test sentence) rejected good-sounding voices and passed others inconsistently.
+**Solution**: Average the similarity over **two** test sentences, and for VCTK build each reference from **2 longer
+sentences** (3.2–6.5 s each) rather than 3 short ones; keep whichever variant clones better. Also compare candidates
+with the model's default voice — one LibriTTS-R speaker scored 0.79 against it.
+**Missteps**: A single test sentence: the same clip scored 0.62 on one sentence (generation stopped after two words)
+and 0.79 on another. Joining many short VCTK sentences: the extra gaps/onsets gave the encoder less steady speech
+(p262 0.77 → 0.89 with longer sentences). Fetching data via the HF dataset viewer: `/filter` only indexes part of
+large datasets and `/rows` rate-limits (429) — reading parquet row groups with `huggingface_hub.HfFileSystem` +
+`pyarrow` (≈ 15 MB per 100 rows) was reliable.
+**Key Insight**: Clone similarity is a noisy, per-generation metric; gate on an average, and the reference clip's
+construction (fewer, longer utterances) matters as much as the speaker.

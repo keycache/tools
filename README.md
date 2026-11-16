@@ -30,3 +30,12 @@ If you are developing a production application, we recommend enabling type-aware
 ```
 
 See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+
+## Credits
+
+- **Speak (Edge AI Studio):** text-to-speech with [Chatterbox](https://huggingface.co/onnx-community/chatterbox-ONNX)
+  (Resemble AI, MIT). The built-in voices in `public/voices/` are short clips from
+  [VCTK 0.92](https://datashare.ed.ac.uk/handle/10283/3443) (CSTR, University of Edinburgh) and
+  [LibriTTS-R](https://www.openslr.org/141/) (Google), both licensed
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); clips were trimmed, joined and loudness-normalised.
+  `public/voices/voices.json` records the dataset, speaker and utterance ids of each clip.

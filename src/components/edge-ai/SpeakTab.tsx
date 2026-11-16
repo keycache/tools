@@ -464,6 +464,21 @@ export function SpeakTab({ active, visited, cache }: Props) {
           </p>
           {capability && <DeviceSummary capability={capability} />}
         </div>
+        <p className="text-xs text-muted-foreground">
+          Built-in voices:{' '}
+          <a className="underline underline-offset-2" href="https://datashare.ed.ac.uk/handle/10283/3443" target="_blank" rel="noreferrer">
+            VCTK
+          </a>{' '}
+          (CSTR, University of Edinburgh) and{' '}
+          <a className="underline underline-offset-2" href="https://www.openslr.org/141/" target="_blank" rel="noreferrer">
+            LibriTTS-R
+          </a>{' '}
+          (Google), licensed{' '}
+          <a className="underline underline-offset-2" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">
+            CC BY 4.0
+          </a>
+          .
+        </p>
       </div>
     </>
   )
