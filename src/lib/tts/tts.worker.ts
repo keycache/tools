@@ -209,6 +209,21 @@ scope.onmessage = async (e: MessageEvent<TtsRequest>) => {
         post({ id: msg.id, type: 'voice', voiceId: msg.voiceId, ms: Math.round(performance.now() - t) })
         return
       }
+      case 'encodeBuiltin': {
+        const t = performance.now()
+        if (!speakers.has(msg.voiceId)) {
+          if (current) throw coded('busy', 'Speech is being generated — stop it first.')
+          current = { id: msg.id }
+          try {
+            const clip = parseWav(await fetchCached(msg.url))
+            await encode(msg.voiceId, resample(clip.pcm, clip.sampleRate, SAMPLE_RATE))
+          } finally {
+            current = null
+          }
+        }
+        post({ id: msg.id, type: 'voice', voiceId: msg.voiceId, ms: Math.round(performance.now() - t) })
+        return
+      }
       case 'synthesize':
         if (current) throw coded('busy', 'Speech is already being generated.')
         await synthesize(msg.id, msg.chunks, msg.voiceId, msg.exaggeration)

@@ -7,6 +7,8 @@ export type TtsRequest =
   | { id: number; type: 'load'; device: TtsDevice; dtype: TtsDtype }
   /** 24 kHz mono PCM (transferred); longer than MAX_REFERENCE_SECONDS is trimmed. Replaces an existing voice id. */
   | { id: number; type: 'encodeVoice'; voiceId: string; pcm: Float32Array }
+  /** A built-in clip (site asset): read from / stored in Speak's OPFS cache, encoded once per worker as `voiceId`. */
+  | { id: number; type: 'encodeBuiltin'; voiceId: string; url: string }
   /** Texts are generated in order, one `chunk` response each. */
   | { id: number; type: 'synthesize'; chunks: string[]; voiceId: string; exaggeration: number }
   /** Interrupts the in-flight synthesize; its partial chunk is dropped. */

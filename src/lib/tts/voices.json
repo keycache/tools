@@ -1,7 +1,7 @@
 [
   {
     "id": "f-american-1",
-    "label": "Female \u00b7 American",
+    "label": "Female · American",
     "gender": "female",
     "accent": "American",
     "pitch": "low",
@@ -9,6 +9,7 @@
     "file": "f-american-1.wav",
     "seconds": 9.68,
     "bytes": 464684,
+    "sha256": "f24dacc4c5b26ab4",
     "source": {
       "dataset": "LibriTTS-R",
       "speaker": "8463",
@@ -20,7 +21,7 @@
   },
   {
     "id": "f-english-1",
-    "label": "Female \u00b7 English",
+    "label": "Female · English",
     "gender": "female",
     "accent": "English",
     "pitch": "high",
@@ -29,6 +30,7 @@
     "file": "f-english-1.wav",
     "seconds": 8.51,
     "bytes": 408426,
+    "sha256": "6aa13c4b9ee8403c",
     "source": {
       "dataset": "VCTK 0.92",
       "speaker": "p276",
@@ -41,7 +43,7 @@
   },
   {
     "id": "f-indian-1",
-    "label": "Female \u00b7 Indian",
+    "label": "Female · Indian",
     "gender": "female",
     "accent": "Indian",
     "pitch": "high",
@@ -50,6 +52,7 @@
     "file": "f-indian-1.wav",
     "seconds": 8.29,
     "bytes": 398190,
+    "sha256": "8f94b38e7a2fcbe6",
     "source": {
       "dataset": "VCTK 0.92",
       "speaker": "p248",
@@ -63,7 +66,7 @@
   },
   {
     "id": "f-irish-1",
-    "label": "Female \u00b7 Irish",
+    "label": "Female · Irish",
     "gender": "female",
     "accent": "Irish",
     "pitch": "mid",
@@ -72,6 +75,7 @@
     "file": "f-irish-1.wav",
     "seconds": 8.09,
     "bytes": 388562,
+    "sha256": "e9091b2dacbedc72",
     "source": {
       "dataset": "VCTK 0.92",
       "speaker": "p288",
@@ -84,7 +88,7 @@
   },
   {
     "id": "f-scottish-1",
-    "label": "Female \u00b7 Scottish",
+    "label": "Female · Scottish",
     "gender": "female",
     "accent": "Scottish",
     "pitch": "low",
@@ -93,6 +97,7 @@
     "file": "f-scottish-1.wav",
     "seconds": 8.36,
     "bytes": 401306,
+    "sha256": "45b2278273310178",
     "source": {
       "dataset": "VCTK 0.92",
       "speaker": "p262",
@@ -105,7 +110,7 @@
   },
   {
     "id": "m-american-1",
-    "label": "Male \u00b7 American",
+    "label": "Male · American",
     "gender": "male",
     "accent": "American",
     "pitch": "high",
@@ -113,6 +118,7 @@
     "file": "m-american-1.wav",
     "seconds": 9.28,
     "bytes": 445484,
+    "sha256": "60adc8ee7bdac089",
     "source": {
       "dataset": "LibriTTS-R",
       "speaker": "2300",
@@ -124,7 +130,7 @@
   },
   {
     "id": "m-american-2",
-    "label": "Male \u00b7 American",
+    "label": "Male · American",
     "gender": "male",
     "accent": "American",
     "pitch": "mid",
@@ -132,6 +138,7 @@
     "file": "m-american-2.wav",
     "seconds": 8.04,
     "bytes": 385964,
+    "sha256": "2e39b061639a688d",
     "source": {
       "dataset": "LibriTTS-R",
       "speaker": "8455",
@@ -143,7 +150,7 @@
   },
   {
     "id": "m-australian-1",
-    "label": "Male \u00b7 Australian",
+    "label": "Male · Australian",
     "gender": "male",
     "accent": "Australian",
     "pitch": "low",
@@ -152,6 +159,7 @@
     "file": "m-australian-1.wav",
     "seconds": 8.34,
     "bytes": 400426,
+    "sha256": "cc321e80de04616b",
     "source": {
       "dataset": "VCTK 0.92",
       "speaker": "p326",
@@ -164,7 +172,7 @@
   },
   {
     "id": "m-english-1",
-    "label": "Male \u00b7 English",
+    "label": "Male · English",
     "gender": "male",
     "accent": "English",
     "pitch": "mid",
@@ -173,6 +181,7 @@
     "file": "m-english-1.wav",
     "seconds": 8.39,
     "bytes": 402768,
+    "sha256": "d99bcb02eed5bcd2",
     "source": {
       "dataset": "VCTK 0.92",
       "speaker": "p232",
@@ -185,7 +194,7 @@
   },
   {
     "id": "m-indian-1",
-    "label": "Male \u00b7 Indian",
+    "label": "Male · Indian",
     "gender": "male",
     "accent": "Indian",
     "pitch": "mid",
@@ -194,6 +203,7 @@
     "file": "m-indian-1.wav",
     "seconds": 8.59,
     "bytes": 412156,
+    "sha256": "0ce27810ef7e5eda",
     "source": {
       "dataset": "VCTK 0.92",
       "speaker": "p251",

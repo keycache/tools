@@ -6,7 +6,7 @@ import { DeviceSummary, ErrorNote, Stats } from '@/components/edge-ai/shared'
 import type { CapturedAudio } from '@/components/edge-ai/useAudioCapture'
 import { useHiddenWhile, usePageHidden } from '@/components/edge-ai/useHiddenWhile'
 import { useOnline } from '@/components/edge-ai/useOnline'
-import { VoicePicker, type ReferenceClip, type VoiceMode } from '@/components/edge-ai/VoicePicker'
+import { VoiceSelect, type ReferenceClip } from '@/components/edge-ai/VoiceSelect'
 import { encodeWav } from '@/lib/cactus/media'
 import type { Capability } from '@/lib/transformers/capability'
 import { ORT_RUNTIME_BYTES } from '@/lib/transformers/constants'
@@ -27,6 +27,15 @@ import {
 import { useTtsCapability, type TtsCacheState } from '@/lib/tts/hooks'
 import { MAX_START_WAIT_SECONDS, SpeechPlayer, playbackStartAt, type PlannedChunk } from '@/lib/tts/playback'
 import type { ChunkStats, SynthStats } from '@/lib/tts/types'
+import {
+  CUSTOM_VOICE,
+  builtinVoice,
+  builtinVoiceKey,
+  builtinVoiceUrl,
+  loadVoiceChoice,
+  saveVoiceChoice,
+  type VoiceChoice,
+} from '@/lib/tts/voices'
 
 interface Props {
   /** Whether the Speak tab is visible (drives auto-load from storage). */
@@ -54,7 +63,8 @@ interface Clip {
   parts: number
   outcome: 'complete' | 'stopped' | 'error'
   backgrounded: boolean
-  voice: VoiceMode
+  /** e.g. "default voice", "your voice", "Female · Scottish". */
+  voiceLabel: string
 }
 
 /** Generation in progress, for the output card. */
@@ -100,7 +110,15 @@ export function SpeakTab({ active, visited, cache }: Props) {
   const [livePlaying, setLivePlaying] = useState(false)
   useEffect(() => () => player.current?.stop(), [])
 
-  const [voiceMode, setVoiceMode] = useState<VoiceMode>('default')
+  const [choice, setChoice] = useState<VoiceChoice>(loadVoiceChoice)
+  /** Built-in voice the worker has encoded (for the "Voice ready" note; Speak still re-checks with the worker). */
+  const [builtinReady, setBuiltinReady] = useState<string | null>(null)
+  /** Built-in voice encodes run one at a time (the worker takes one job at a time). */
+  const prepareQueue = useRef<Promise<unknown>>(Promise.resolve())
+  const choiceRef = useRef(choice)
+  useEffect(() => {
+    choiceRef.current = choice
+  }, [choice])
   const [voice, setVoice] = useState<CustomVoice | null>(null)
   const [preparing, setPreparing] = useState(false)
   const [voiceError, setVoiceError] = useState<string | null>(null)
@@ -117,7 +135,7 @@ export function SpeakTab({ active, visited, cache }: Props) {
   const pageHidden = usePageHidden()
   const chars = text.trim().length
   const tooLong = chars > MAX_CHARS
-  const custom = voiceMode === 'custom'
+  const custom = choice === CUSTOM_VOICE
   const canSpeak = ready && !busy && !preparing && chars > 0 && !tooLong && (!custom || !!voice)
 
   // Release the previous clip's blob URL when it's replaced or the tab unmounts.
@@ -154,6 +172,61 @@ export function SpeakTab({ active, visited, cache }: Props) {
     } finally {
       setPreparing(false)
     }
+  }
+
+  function changeChoice(next: VoiceChoice) {
+    setChoice(next)
+    saveVoiceChoice(next)
+    setVoiceError(null)
+  }
+
+  /**
+   * Makes built-in voice `id` available in the worker (fetched and stored on first use, then encoded once per worker).
+   * On failure it shows why and falls back to the default voice. `eager` prepares are skipped once another voice is
+   * chosen (arrowing through the dropdown queues one per option).
+   */
+  function prepareBuiltin(id: string, eager = false): Promise<boolean> {
+    const v = builtinVoice(id)
+    if (!v) return Promise.resolve(false)
+    const run = async () => {
+      if (eager && choiceRef.current !== id) return false
+      setPreparing(true)
+      try {
+        await tts.encodeBuiltin(builtinVoiceKey(id), builtinVoiceUrl(v))
+        setBuiltinReady(id)
+        return true
+      } catch (err) {
+        setChoice((c) => (c === id ? DEFAULT_VOICE_ID : c))
+        const why =
+          err instanceof TtsError && err.code === 'network'
+            ? `it downloads (${Math.round(v.bytes / 1000)} KB) the first time it's used — check your connection`
+            : errorText(err).replace(/\.$/, '')
+        setVoiceError(`Couldn't load the ${v.label} voice: ${why}. Using the default voice.`)
+        return false
+      } finally {
+        setPreparing(false)
+      }
+    }
+    const next = prepareQueue.current.then(run, run)
+    prepareQueue.current = next
+    return next
+  }
+
+  // Prepare the chosen built-in voice as soon as the model is ready, so Speak starts without the extra step.
+  useEffect(() => {
+    if (ready && builtinVoice(choice) && builtinReady !== choice) void prepareBuiltin(choice, true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, choice])
+
+  /** The worker voice id for the current choice, preparing it first if needed; null if it couldn't be prepared. */
+  async function ensureVoice(force = false): Promise<string | null> {
+    if (custom) {
+      if (!voice) return null
+      if ((force || !voice.encoded) && !(await prepareVoice(voice))) return null
+      return voice.id
+    }
+    if (builtinVoice(choice)) return (await prepareBuiltin(choice)) ? builtinVoiceKey(choice) : null
+    return DEFAULT_VOICE_ID
   }
 
   function addVoice(audio: CapturedAudio) {
@@ -210,11 +283,11 @@ export function SpeakTab({ active, visited, cache }: Props) {
       if (generated && player.current === p) setLivePlaying(false)
     }
 
-    let voiceId = DEFAULT_VOICE_ID
-    if (custom && voice) {
-      if (!voice.encoded && !(await prepareVoice(voice))) return
-      voiceId = voice.id
-    }
+    const firstVoiceId = await ensureVoice()
+    if (!firstVoiceId) return
+    let voiceId = firstVoiceId
+    const builtinLabel = builtinVoice(choice)?.label
+    const voiceLabel = custom ? 'your voice' : builtinLabel ? `${builtinLabel} voice` : 'default voice'
 
     const plan: PlannedChunk[] = chunks.map((c, i) => ({ pause: i === 0 ? 0 : PAUSE_SECONDS[c.pause], chars: c.text.length }))
     // Finished parts as 16-bit PCM (half the memory of Float32); the float copy only goes to the player.
@@ -278,7 +351,7 @@ export function SpeakTab({ active, visited, cache }: Props) {
         stallSeconds: p.stallSeconds,
         outcome,
         backgrounded: hiddenDuringJob.current,
-        voice: voiceMode,
+        voiceLabel,
       })
       parts.length = 0
       return seconds
@@ -289,8 +362,11 @@ export function SpeakTab({ active, visited, cache }: Props) {
       try {
         done = await run()
       } catch (err) {
-        // The worker lost its speaker cache (restarted after a GPU loss / reload): encode the clip again, once.
-        if (!(err instanceof TtsError && err.code === 'no-voice' && custom && voice && !parts.length && (await prepareVoice(voice)))) throw err
+        // The worker lost its speaker cache (restarted after a GPU loss / reload): encode the voice again, once.
+        if (!(err instanceof TtsError && err.code === 'no-voice' && !parts.length)) throw err
+        const again = await ensureVoice(true)
+        if (!again) throw err
+        voiceId = again
         done = await run()
       }
       clearTimeout(timer)
@@ -365,15 +441,18 @@ export function SpeakTab({ active, visited, cache }: Props) {
             className="min-h-0 w-full flex-1 resize-none rounded-lg border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
           />
         </div>
-          <VoicePicker
-            mode={voiceMode}
-            onModeChange={setVoiceMode}
+          <VoiceSelect
+            choice={choice}
+            onChoiceChange={changeChoice}
             clip={voice?.clip ?? null}
             onAudio={addVoice}
             onRemove={removeVoice}
-            status={!voice ? 'idle' : preparing ? 'preparing' : voice.encoded ? 'ready' : 'idle'}
+            status={
+              preparing ? 'preparing' : custom ? (voice?.encoded ? 'ready' : 'idle') : builtinVoice(choice) && builtinReady === choice && ready ? 'ready' : 'idle'
+            }
             error={voiceError}
-            disabled={busy || preparing}
+            // Built-in voices prepare in the background, so the dropdown stays usable (e.g. arrowing through it).
+            disabled={busy || (custom && preparing)}
           />
         </div>
 
@@ -412,7 +491,9 @@ export function SpeakTab({ active, visited, cache }: Props) {
           {busy
             ? `Generating speech… ${elapsed.toFixed(1)} s (usually about 1.5× the length of the audio)${live && live.total > 1 ? ` · part ${Math.min(live.done + 1, live.total)} of ${live.total}` : ''}${pageHidden ? ' · Keep this tab visible for full speed' : ''}`
             : preparing
-              ? 'Preparing your voice…'
+              ? custom
+                ? 'Preparing your voice…'
+                : 'Preparing voice…'
               : custom && !voice && 'Add a voice clip on the right (or below) to speak in your voice.'}
         </div>
         <ErrorNote>{error}</ErrorNote>
@@ -442,7 +523,7 @@ export function SpeakTab({ active, visited, cache }: Props) {
                   `generated in ${(clip.synth.ms / 1000).toFixed(1)} s`,
                   `${clip.synth.rtf.toFixed(2)}× real time`,
                   `${clip.speechTokens} speech tokens`,
-                  clip.voice === 'custom' ? 'your voice' : 'default voice',
+                  clip.voiceLabel,
                   clip.stalls > 0 && `playback waited ${clip.stalls}× (${clip.stallSeconds.toFixed(1)} s)`,
                   clip.resplit > 0 && `${clip.resplit} part${clip.resplit > 1 ? 's' : ''} re-split`,
                   clip.cutOff > 0 && `${clip.cutOff} part${clip.cutOff > 1 ? 's' : ''} may be cut off`,

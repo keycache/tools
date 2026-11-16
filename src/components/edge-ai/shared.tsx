@@ -12,11 +12,11 @@ export function Textarea({ className, ...props }: React.ComponentProps<'textarea
   return <textarea className={cn(fieldClass, 'min-h-20 resize-y', className)} {...props} />
 }
 
-export function Select({ className, ...props }: React.ComponentProps<'select'>) {
+export function Select({ className, wrapperClassName, ...props }: React.ComponentProps<'select'> & { wrapperClassName?: string }) {
   // The native arrow hugs the right border and differs per browser, so hide it and draw our own
   // chevron with consistent right padding.
   return (
-    <span className="relative inline-flex">
+    <span className={cn('relative inline-flex', wrapperClassName)}>
       <select className={cn(fieldClass, 'h-9 w-auto cursor-pointer appearance-none py-0 pr-9', className)} {...props} />
       <ChevronDown aria-hidden className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground" />
     </span>

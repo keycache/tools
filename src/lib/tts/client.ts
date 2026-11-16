@@ -150,6 +150,13 @@ class TtsClient {
     await this.guard(this.call<void>({ type: 'encodeVoice', voiceId, pcm }, {}, [pcm.buffer]).done)
   }
 
+  /** Makes a built-in voice available as `voiceId` (fetched + stored on first use, then encoded once per worker). */
+  async encodeBuiltin(voiceId: string, url: string): Promise<void> {
+    this.assertReady()
+    await this.guard(this.call<void>({ type: 'encodeBuiltin', voiceId, url }).done)
+    notifyTtsCacheChanged()
+  }
+
   /** Generates `chunks` in order; `onChunk` receives each one as soon as it's ready. Resolves when done or stopped. */
   async synthesize(chunks: string[], voiceId: string, exaggeration: number, onChunk: (chunk: AudioChunk, stats: ChunkStats) => void): Promise<SynthDone> {
     this.assertReady()

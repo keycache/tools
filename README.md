@@ -38,4 +38,4 @@ See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rule
   [VCTK 0.92](https://datashare.ed.ac.uk/handle/10283/3443) (CSTR, University of Edinburgh) and
   [LibriTTS-R](https://www.openslr.org/141/) (Google), both licensed
   [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); clips were trimmed, joined and loudness-normalised.
-  `public/voices/voices.json` records the dataset, speaker and utterance ids of each clip.
+  `src/lib/tts/voices.json` records the dataset, speaker and utterance ids of each clip.
