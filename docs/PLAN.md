@@ -281,10 +281,19 @@ remaining height. Settings is a popover beside Send (Escape or outside click clo
 - [ ] Verify desktop, narrow layout, mobile viewport / virtual keyboard, focus order, drawer behavior, live-region
       announcements and existing error paths.
 - [ ] Verify reload, model-cache status, saved chats, clear-storage behavior, all non-chat tools and deep links.
-- [ ] Update this plan and the specification with actual implementation and browser-test results; add a learning
+- [x] Update this plan and the specification with actual implementation and browser-test results; add a learning
       entry only for a non-obvious finding.
 
 **Done when:** C1–C3 acceptance checks pass, the existing tools are unchanged, and build, lint and tests pass.
+
+**Result (partial verification):** typecheck, build and all 225 tests pass; lint shows only pre-existing warnings.
+Checked in the browser at 1024×640 without loading the 3 GB model: `#/pocket-chat` does not scroll the page; a 20-line
+message grows the textarea to its 176 px cap and then scrolls inside it; Settings opens in view, and Escape closes it
+and returns focus to the button; Edge AI Studio lists Listen/See/Act/Speak, Clock keeps its contained layout and the
+home page is unchanged. Fix found along the way: the single-column mobile grid needed `grid-cols-[minmax(0,1fr)]`,
+otherwise wide content stretched it past the viewport. **Still to verify manually** (not possible here): phone-width
+rendering and drawer, on-screen keyboard, streaming/generation and cache status with a loaded model, saved-chat
+reload and clear-storage behavior. The first two C4 boxes stay unchecked until then.
 
 ### Phase C5 — Prompt templates
 

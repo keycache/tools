@@ -539,7 +539,7 @@ export function ChatTab({ active, visited, cache, headerActions }: Props) {
         {busy ? 'Gemma is replying…' : announcement}
       </p>
 
-      <div className="relative grid min-h-0 flex-1 gap-3 py-3 lg:grid-cols-[17rem_minmax(0,1fr)]">
+      <div className="relative grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] gap-3 py-3 lg:grid-cols-[17rem_minmax(0,1fr)]">
           <ConversationList
             conversations={conversations}
             activeId={activeConv?.id ?? null}

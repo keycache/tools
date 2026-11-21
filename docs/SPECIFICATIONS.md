@@ -1247,6 +1247,8 @@ foundation.
 
 ### Pocket Chat verification targets
 
+- **C4 (partly verified):** the mobile grid column is `minmax(0,1fr)` so wide children cannot push the page wider
+  than the viewport. Remaining manual checks are listed in PLAN.md C4.
 - **C3 as built:** `SettingsPopover` (in `ChatTab.tsx`) holds Temperature, Max reply and Thinking; the composer
   textarea is sized from `scrollHeight` in a layout effect and capped at `max-h-44`.
 - **C2 as built:** Only Pocket Chat opts into `full-height`. The shell uses the dynamic viewport height where
