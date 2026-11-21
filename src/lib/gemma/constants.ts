@@ -47,7 +47,7 @@ export function gemmaTotalBytes(dtype: GemmaDtype, { withAudio = GEMMA_LOADS_AUD
  * Prompt + reply token budget per turn. The model supports 128k, but prefill cost and KV-cache memory grow with
  * context, so the browser chat keeps a much smaller window (oldest turns are dropped first).
  */
-export const GEMMA_CONTEXT_TOKENS = 8192
+export const GEMMA_CONTEXT_TOKENS = 32768
 
 /**
  * Pins Gemma's `resolve/main/` URLs to GEMMA_REVISION in the cache (Transformers.js 4.3.2 looks up

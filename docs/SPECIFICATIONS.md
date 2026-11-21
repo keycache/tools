@@ -237,7 +237,7 @@ interface ChatMessage {
   stride-2 reductions, capped at 750, +2 markers (1 s ≈ 27 tokens, 30 s = 752). Used by `trimTurns`.
 - **Optimisation (later):** every turn re-runs the vision/audio encoders for all kept media (first token 4–6.5 s with
   one image, ~26 s with an image + 4 s clip, vs 0.3–1 s text-only). Reusing the KV cache / image features across turns would avoid that.
-- **Trimming (`trimTurns`):** keep the newest turns that fit `GEMMA_CONTEXT_TOKENS (8192) - maxNewTokens`
+- **Trimming (`trimTurns`):** keep the newest turns that fit `GEMMA_CONTEXT_TOKENS (32768) - maxNewTokens`
   (count via `processor.tokenizer.encode`, +6 tokens/turn template overhead, +`IMAGE_TOKENS` (282) per image, +`audioTokens()` per clip); always keep the latest turn; the
   kept history always starts with a user turn; drop media of trimmed turns. `stats.trimmedTurns` drives the UI note
   "Older messages (n) weren't sent to the model".
