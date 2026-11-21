@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useDeferredValue, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { Component, Suspense, lazy, useCallback, useDeferredValue, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { AlertTriangle, CheckCircle2, Download, HardDrive, Loader2, Mic, PanelLeft, Paperclip, Send, SlidersHorizontal, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConversationList } from '@/components/pocket-chat/ConversationList'
@@ -848,7 +848,7 @@ function Transcript({ messages, stream, ready }: { messages: ChatMessage[]; stre
 
 function UserBubble({ text, images, audio }: { text: string; images?: Attachment[]; audio?: AudioClip }) {
   return (
-    <div className="ml-auto flex max-w-[85%] flex-col items-end gap-1.5">
+    <div className="ml-auto flex min-w-0 max-w-[85%] flex-col items-end gap-1.5">
       {audio && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Mic className="size-3.5" />
@@ -865,9 +865,32 @@ function UserBubble({ text, images, audio }: { text: string; images?: Attachment
           ))}
         </div>
       )}
-      {text && <div className="w-fit rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-sm whitespace-pre-wrap text-primary-foreground">{text}</div>}
+      {text && (
+        <div className="w-fit max-w-full min-w-0 rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-sm text-primary-foreground [&_p]:whitespace-pre-wrap [&_a]:text-primary-foreground [&_blockquote]:text-primary-foreground/80 [&_pre]:text-foreground [&_:not(pre)>code]:bg-primary-foreground/15 [&_hr]:border-primary-foreground/40 [&_td]:border-primary-foreground/40 [&_th]:border-primary-foreground/40 [&_th]:bg-transparent">
+          <RawFallback text={text}>
+            <Suspense fallback={<div className="whitespace-pre-wrap">{text}</div>}>
+              <Markdown text={text} />
+            </Suspense>
+          </RawFallback>
+        </div>
+      )}
+      {text && <CopyButton text={text} className="h-6 px-2 text-xs" />}
     </div>
   )
+}
+
+/** Renders children, but shows the text unformatted if Markdown rendering throws. */
+class RawFallback extends Component<{ text: string; children: ReactNode }, { failedFor: string | null }> {
+  state = { failedFor: null as string | null }
+  static getDerivedStateFromError() {
+    return { failedFor: '' }
+  }
+  componentDidCatch() {
+    this.setState({ failedFor: this.props.text })
+  }
+  render() {
+    return this.state.failedFor !== null ? <div className="whitespace-pre-wrap">{this.props.text}</div> : this.props.children
+  }
 }
 
 const Markdown = lazy(() => import('@/components/pocket-chat/Markdown'))

@@ -82,6 +82,12 @@ So use `[pause]` only for deliberate beats: a dramatic silence, a scene change, 
 - Turns of 1–3 sentences sound most natural in dialogue. Use a blank line inside a turn only for a real paragraph break in a longer monologue.
 - Every speaker you introduce should speak at least once. Vary turn lengths so it sounds conversational.
 - Rough length: about 15 characters of text per second of audio, so 1,000 characters ≈ 1 minute.
+- LENGTH is a minimum to reach, not a ceiling, and scripts usually come out too short. Convert it before writing and
+  aim for 30% MORE than the result: 1 minute ≈ 1,100 characters ≈ 10 turns of 3–4 sentences; 3 minutes ≈ 3,300
+  characters ≈ 30 turns; 5 minutes ≈ 5,500 characters ≈ 50 turns (so write about 70). Turns should be 3–4 sentences,
+  not one-liners. Do not wrap up early — no goodbyes or summaries until you have reached that size. If the TOPIC lists
+  items, cover each one in depth with examples, practice questions and repetition rather than a single sentence each.
+- If LENGTH is given in turns, write at least that many turns.
 
 ## Self-check before answering
 - Starts with a speaker tag, and every turn has one; only tags from `[S1]` up to the SPEAKERS count are used (e.g. SPEAKERS = 2 → `[S1]` and `[S2]`), and each of them speaks.
