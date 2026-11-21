@@ -1173,17 +1173,17 @@ Summary line under the text box: "3 speakers · 14 turns · about 1 min 40 s of 
 
 ---
 
-## Pocket Chat (standalone; C1 done, C2–C5 planned)
+## Pocket Chat (standalone; C1–C2 done, C3–C5 planned)
 
 Companion to [PLAN.md — Pocket Chat](./PLAN.md#pocket-chat-standalone-tool-and-prompt-templates). This section is
-the agreed target design for moving Gemma Chat out of Edge AI Studio. C1 is implemented; the full-height redesign
+the agreed target design for moving Gemma Chat out of Edge AI Studio. C1 and C2 are implemented; composer/settings
 and templates remain planned. The existing Gemma worker, model cache and `edge-ai-chat` IndexedDB data remain the
 foundation.
 
 ### Placement and migration
 
 - **Tool name / route:** Pocket Chat, hash route `#/pocket-chat`.
-- **Registry:** `pocket-chat` is registered in `src/tools.ts`. C2 will add an opt-in full-height page layout field to `Tool`;
+- **Registry:** `pocket-chat` is registered in `src/tools.ts` with the opt-in `full-height` layout field on `Tool`;
   `App.tsx` uses that layout only for Pocket Chat. All other tool routes keep the existing contained `max-w-6xl`
   shell, title and padding.
 - **Edge AI Studio:** Chat and its Gemma / Saved chats entries have been removed from its storage menu. It keeps
@@ -1196,15 +1196,17 @@ foundation.
 
 ### Full-height responsive UI
 
-- The page occupies the viewport height (`100dvh` with a safe fallback) and does not scroll as a whole. A slim
-  header contains the All tools link, Pocket Chat name, compact Gemma status and storage menu.
+- The page occupies the viewport height (`100dvh`, falling back to `100vh`) and does not scroll as a whole. A slim
+  app header contains the All tools link and Pocket Chat name; the chat header contains compact Gemma status and the
+  storage menu. Safe-area insets are respected.
 - The chat body is a `min-h-0 flex-1` region. On desktop it contains a fixed-width conversation sidebar and a
   flexible message/composer column. The transcript scrolls independently and centres its content in a readable
   max-width column; the sidebar scrolls independently.
 - On narrow screens the sidebar is hidden behind a Chats button and opens as an overlay drawer aligned to the
   transcript. Opening/closing it does not resize or shift the conversation.
-- Before the model is ready, the download gate occupies the empty conversation area rather than a permanent row.
-  Once ready, show a compact status in the header. Errors and cache-write warnings remain visible and actionable.
+- Before the model is ready, the download gate occupies the empty conversation area rather than a permanent row;
+  saved messages remain readable with the gate above them. Once ready, show a compact status in the chat header.
+  Model errors and cache-write warnings remain visible.
 - The existing transcript auto-scroll, attachments, audio playback/recording, Markdown, Stop, Copy, saved-chat
   actions, keyboard behavior and screen-reader status remain available.
 - Use mobile dynamic viewport sizing and safe-area insets; the composer remains visible when the virtual keyboard
@@ -1245,6 +1247,10 @@ foundation.
 
 ### Pocket Chat verification targets
 
+- **C2 as built:** Only Pocket Chat opts into `full-height`. The shell uses the dynamic viewport height where
+  supported, with safe-area padding, and keeps the rest of the routes on the existing contained layout. The
+  conversation list has its own scroll area; the transcript fills and scrolls within the remaining height. On
+  narrow screens, the list opens as an overlay drawer without changing the transcript width.
 - Existing saved conversations survive the move and open at `#/pocket-chat`; Edge AI Studio no longer loads or
   displays Chat.
 - At desktop and mobile viewport sizes, the app page does not scroll; only transcript, sidebar/drawer and a

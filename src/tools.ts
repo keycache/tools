@@ -13,6 +13,7 @@ export interface Tool {
   name: string
   description: string
   component: ComponentType
+  layout?: 'full-height'
 }
 
 export const TOOLS: Tool[] = [
@@ -63,5 +64,6 @@ export const TOOLS: Tool[] = [
     name: 'Pocket Chat',
     description: 'Chat with a multimodal Gemma model running entirely in your browser, with image and audio input.',
     component: PocketChatTool,
+    layout: 'full-height',
   },
 ]

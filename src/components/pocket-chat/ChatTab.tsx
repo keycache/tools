@@ -1,5 +1,5 @@
-import { Suspense, lazy, useCallback, useDeferredValue, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Loader2, Mic, PanelLeft, Paperclip, Send, Square, X } from 'lucide-react'
+import { Suspense, lazy, useCallback, useDeferredValue, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { AlertTriangle, CheckCircle2, Download, HardDrive, Loader2, Mic, PanelLeft, Paperclip, Send, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConversationList } from '@/components/pocket-chat/ConversationList'
 import { ModelGate, type ModelSource } from '@/components/edge-ai/ModelGate'
@@ -32,6 +32,7 @@ interface Props {
   /** Becomes true the first time the tab is opened; capability detection only runs from then on. */
   visited: boolean
   cache: GemmaCacheState
+  headerActions?: ReactNode
 }
 
 interface Attachment {
@@ -116,7 +117,7 @@ function saveErrorText(action: string, err: unknown): string {
   return quota ? `Browser storage is full — couldn't ${action}. Free up space or remove old chats.` : `Couldn't ${action}: ${errorText(err)}`
 }
 
-export function ChatTab({ active, visited, cache }: Props) {
+export function ChatTab({ active, visited, cache, headerActions }: Props) {
   const capability = useGemmaCapability(visited, cache.ready)
   const state = useGemma()
   useEffect(() => {
@@ -447,30 +448,89 @@ export function ChatTab({ active, visited, cache }: Props) {
   }
 
   const stream = state.stream
+  const source = gemmaSource(capability, state, load, online)
+  const modelStatusLabel =
+    source.status === 'ready'
+      ? source.warning
+        ? 'Ready · not saved for offline use'
+        : 'Ready · runs offline'
+      : source.status === 'checking'
+        ? 'Checking device…'
+        : source.status === 'loading'
+          ? 'Loading…'
+          : source.status === 'error'
+            ? 'Load failed'
+            : source.status === 'unsupported'
+              ? 'Unavailable'
+              : source.cached
+                ? 'In browser storage'
+                : 'Not loaded'
 
   return (
-    <>
-      <ModelGate source={gemmaSource(capability, state, load, online)} active={active} />
+    <div className="flex h-full min-h-0 flex-col px-3 pb-[env(safe-area-inset-bottom)] sm:px-4">
+      <header className="flex min-h-12 shrink-0 items-center gap-3 border-b py-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <Button
+            ref={chatsButtonRef}
+            variant="outline"
+            size="sm"
+            onClick={() => setListOpen((o) => !o)}
+            aria-expanded={listOpen}
+            aria-controls="gemma-chat-list"
+            className="shrink-0 gap-2 lg:hidden"
+          >
+            <PanelLeft className="size-4" /> Chats
+          </Button>
+          <span className="min-w-0 truncate text-sm text-muted-foreground lg:hidden">{activeConv?.title ?? 'New chat'}</span>
+          <span
+            className="shrink-0 lg:hidden"
+            role="status"
+            aria-label={`Gemma: ${modelStatusLabel}`}
+            title={modelStatusLabel}
+          >
+            {ready ? (
+              source.warning ? (
+                <AlertTriangle className="size-3.5 text-amber-600 dark:text-amber-400" />
+              ) : (
+                <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+              )
+            ) : (
+              source.status === 'checking' || source.status === 'loading' ? (
+                <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+              ) : source.status === 'idle' ? (
+                source.cached ? <HardDrive className="size-3.5 text-muted-foreground" /> : <Download className="size-3.5 text-muted-foreground" />
+              ) : (
+                <AlertTriangle className="size-3.5 text-destructive" />
+              )
+            )}
+          </span>
+          <span className="hidden shrink-0 text-sm font-medium lg:inline">Gemma 4 E2B</span>
+          <span className="hidden min-w-0 items-center gap-1.5 truncate text-xs text-muted-foreground lg:inline-flex">
+            {ready ? (
+              source.warning ? (
+                <>
+                  <AlertTriangle className="size-3.5 text-amber-600 dark:text-amber-400" />
+                  <span className="truncate">Ready · not saved for offline use</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Ready · runs offline</span>
+                </>
+              )
+            ) : (
+              <>Gemma · {modelStatusLabel}</>
+            )}
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">{headerActions}</div>
+      </header>
+
       <p className="sr-only" role="status" aria-live="polite">
         {busy ? 'Gemma is replying…' : announcement}
       </p>
 
-      <div className="space-y-3">
-        <div className="relative grid gap-3 lg:grid-cols-[15rem_minmax(0,1fr)]">
-          <div className="flex min-w-0 items-center gap-2 lg:hidden">
-            <Button
-              ref={chatsButtonRef}
-              variant="outline"
-              size="sm"
-              onClick={() => setListOpen((o) => !o)}
-              aria-expanded={listOpen}
-              aria-controls="gemma-chat-list"
-              className="gap-2"
-            >
-              <PanelLeft className="size-4" /> Chats
-            </Button>
-            <span className="min-w-0 truncate text-sm text-muted-foreground">{activeConv?.title ?? 'New chat'}</span>
-          </div>
+      <div className="relative grid min-h-0 flex-1 gap-3 py-3 lg:grid-cols-[17rem_minmax(0,1fr)]">
           <ConversationList
             conversations={conversations}
             activeId={activeConv?.id ?? null}
@@ -491,11 +551,27 @@ export function ChatTab({ active, visited, cache }: Props) {
               setListOpen(false)
               chatsButtonRef.current?.focus()
             }}
-            className={cn('h-112', listOpen ? 'absolute top-10 left-0 z-20 w-72 shadow-lg' : 'hidden', 'lg:static lg:flex lg:w-auto lg:shadow-none')}
+            className={cn('h-full', listOpen ? 'absolute inset-y-0 left-0 z-20 w-72 shadow-lg' : 'hidden', 'lg:static lg:flex lg:w-auto lg:shadow-none')}
           />
-          <Transcript messages={messages} stream={stream} ready={ready} />
-        </div>
-        <ErrorNote>{error ?? capture.error}</ErrorNote>
+        <section className="flex min-h-0 min-w-0 flex-col">
+          <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col gap-3">
+            {!ready && messages.length > 0 && <ModelGate source={source} active={active} />}
+            {!ready && messages.length === 0 ? (
+              <div className="flex min-h-0 flex-1 items-center justify-center">
+                <div className="w-full max-w-3xl">
+                  <ModelGate source={source} active={active} />
+                </div>
+              </div>
+            ) : (
+              <Transcript messages={messages} stream={stream} ready={ready} />
+            )}
+            {ready && source.warning && (
+              <p role="alert" className="flex shrink-0 items-start gap-2 text-xs text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="mt-px size-3.5 shrink-0" />
+                <span>{source.warning}</span>
+              </p>
+            )}
+            <ErrorNote>{error ?? capture.error}</ErrorNote>
 
         {/* Fixed-height composer: the thumbnail strip takes space from the textarea, so nothing below moves. */}
         <div
@@ -581,7 +657,7 @@ export function ChatTab({ active, visited, cache }: Props) {
                 addFiles(files)
               }
             }}
-            placeholder={ready ? 'Ask Gemma anything… (drop or paste images or audio to ask about them)' : 'Load Gemma above to start chatting.'}
+            placeholder={ready ? 'Ask Gemma anything… (drop or paste images or audio to ask about them)' : 'Load Gemma to start chatting.'}
             disabled={!ready}
             className="min-h-0 w-full flex-1 resize-none bg-transparent px-3 py-2 text-sm outline-none"
           />
@@ -658,7 +734,7 @@ export function ChatTab({ active, visited, cache }: Props) {
           </div>
         </div>
 
-        <div className="flex min-h-8 flex-wrap items-start justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <div className="flex min-h-8 shrink-0 flex-wrap items-start justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
           <p>
             Enter to send · Shift+Enter for a new line · Esc to stop · up to {MAX_IMAGES_PER_MESSAGE} images and one audio clip (≤ {MAX_AUDIO_SECONDS} s) per message.
             {lastTrimmed > 0 && ` Older messages (${lastTrimmed}) weren't sent to the model to fit its context.`}
@@ -666,8 +742,10 @@ export function ChatTab({ active, visited, cache }: Props) {
           </p>
           {capability && <DeviceSummary capability={capability} />}
         </div>
+          </div>
+        </section>
       </div>
-    </>
+    </div>
   )
 }
 
@@ -693,18 +771,20 @@ function Transcript({ messages, stream, ready }: { messages: ChatMessage[]; stre
       aria-busy={!!stream}
       tabIndex={0}
       aria-label="Conversation"
-      className="h-112 space-y-4 overflow-y-auto rounded-xl border p-4"
+      className="min-h-0 flex-1 overflow-y-auto rounded-xl border p-4"
     >
-      {!messages.length && !stream ? (
-        <div className="flex h-full items-center justify-center text-center text-sm text-muted-foreground">
-          {ready ? 'Ask anything — Gemma runs entirely on this device.' : 'Your conversation appears here.'}
-        </div>
-      ) : (
-        <>
-          {messages.map((m) => (m.role === 'user' ? <UserBubble key={m.id} text={m.text} images={m.images} audio={m.audio} /> : <AssistantBubble key={m.id} message={m} />))}
-          {stream && <AssistantBubble message={{ id: 'stream', role: 'assistant', text: stream.answer, thinking: stream.thinking, createdAt: 0 }} streaming />}
-        </>
-      )}
+      <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col space-y-4">
+        {!messages.length && !stream ? (
+          <div className="flex flex-1 items-center justify-center text-center text-sm text-muted-foreground">
+            {ready ? 'Ask anything — Gemma runs entirely on this device.' : 'Your conversation appears here.'}
+          </div>
+        ) : (
+          <>
+            {messages.map((m) => (m.role === 'user' ? <UserBubble key={m.id} text={m.text} images={m.images} audio={m.audio} /> : <AssistantBubble key={m.id} message={m} />))}
+            {stream && <AssistantBubble message={{ id: 'stream', role: 'assistant', text: stream.answer, thinking: stream.thinking, createdAt: 0 }} streaming />}
+          </>
+        )}
+      </div>
     </div>
   )
 }

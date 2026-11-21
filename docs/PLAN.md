@@ -253,17 +253,18 @@ studio tab list. Typecheck, lint, build and all 225 unit tests pass.
 
 ### Phase C2 — Full-height chat layout
 
-- [ ] Add an opt-in full-height tool-page layout; leave existing tools on the current contained page shell.
-- [ ] Use the viewport height (including mobile dynamic viewport sizing); the page itself does not scroll.
-- [ ] Desktop: chat list in a fixed-width left column; messages in a centred readable column. Narrow screens: chat
+- [x] Add an opt-in full-height tool-page layout; leave existing tools on the current contained page shell.
+- [x] Use the viewport height (including mobile dynamic viewport sizing); the page itself does not scroll.
+- [x] Desktop: chat list in a fixed-width left column; messages in a centred readable column. Narrow screens: chat
       list opens as a drawer.
-- [ ] Make the message transcript flex to fill the remaining height; keep its scroll position behavior and prevent
+- [x] Make the message transcript flex to fill the remaining height; keep its scroll position behavior and prevent
       the header, sidebar and composer from shifting during generation.
-- [ ] Put the download gate in the empty conversation area while loading/not ready; once ready, reduce it to a
+- [x] Put the download gate in the empty conversation area while loading/not ready; once ready, reduce it to a
       compact header status. Keep errors and cache warnings visible and actionable.
 
-**Done when:** chat uses the available vertical space at desktop and phone sizes, with only the transcript and chat
-list scrolling.
+**Done when:** met by the opt-in `full-height` tool layout, fixed-width desktop sidebar, overlay mobile drawer, and
+flexing transcript. The viewport shell uses `100dvh` where supported, safe-area padding, and keeps the model gate in
+the empty conversation panel; loaded status and cache warnings remain visible.
 
 ### Phase C3 — Composer and settings
 

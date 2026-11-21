@@ -8,9 +8,12 @@ export function PocketChatTool() {
   const chats = useChatStorage()
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        {isCacheSupported() ? (
+    <ChatTab
+      active
+      visited
+      cache={gemmaCache}
+      headerActions={
+        isCacheSupported() ? (
           <StorageMenu
             entries={[
               { id: 'gemma', label: 'Chat model (Gemma)', bytes: gemmaCache.bytes, clear: gemmaCache.clear },
@@ -24,10 +27,9 @@ export function PocketChatTool() {
             ]}
           />
         ) : (
-          <span className="text-xs text-muted-foreground">Browser storage unavailable here (needs HTTPS) — models will re-download.</span>
-        )}
-      </div>
-      <ChatTab active visited cache={gemmaCache} />
-    </div>
+          <span className="max-w-56 text-right text-xs text-muted-foreground">Browser storage unavailable here (needs HTTPS) — models will re-download.</span>
+        )
+      }
+    />
   )
 }
