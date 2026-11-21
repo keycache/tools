@@ -268,13 +268,13 @@ the empty conversation panel; loaded status and cache warnings remain visible.
 
 ### Phase C3 — Composer and settings
 
-- [ ] Grow the message textarea from one to about eight lines, then scroll within the textarea; size the transcript
+- [x] Grow the message textarea from one to about eight lines, then scroll within the textarea; size the transcript
       to the remaining space.
-- [ ] Move Temperature, Max reply and Thinking into a keyboard-accessible Settings popover beside Send.
-- [ ] Keep attachments, recording, Enter-to-send, Shift+Enter newline and Esc-to-stop behavior.
+- [x] Move Temperature, Max reply and Thinking into a keyboard-accessible Settings popover beside Send.
+- [x] Keep attachments, recording, Enter-to-send, Shift+Enter newline and Esc-to-stop behavior.
 
-**Done when:** long input and attachments do not move the header or sidebar; settings are reachable and operable by
-keyboard.
+**Done when:** met. The textarea auto-sizes (cap `max-h-44`, ~8 lines) and then scrolls; the transcript flexes to the
+remaining height. Settings is a popover beside Send (Escape or outside click closes; focus returns to the button).
 
 ### Phase C4 — Standalone-tool polish
 

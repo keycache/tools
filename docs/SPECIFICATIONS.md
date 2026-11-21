@@ -1173,11 +1173,11 @@ Summary line under the text box: "3 speakers · 14 turns · about 1 min 40 s of 
 
 ---
 
-## Pocket Chat (standalone; C1–C2 done, C3–C5 planned)
+## Pocket Chat (standalone; C1–C3 done, C4–C5 planned)
 
 Companion to [PLAN.md — Pocket Chat](./PLAN.md#pocket-chat-standalone-tool-and-prompt-templates). This section is
-the agreed target design for moving Gemma Chat out of Edge AI Studio. C1 and C2 are implemented; composer/settings
-and templates remain planned. The existing Gemma worker, model cache and `edge-ai-chat` IndexedDB data remain the
+the agreed target design for moving Gemma Chat out of Edge AI Studio. C1–C3 are implemented; polish and
+templates remain planned. The existing Gemma worker, model cache and `edge-ai-chat` IndexedDB data remain the
 foundation.
 
 ### Placement and migration
@@ -1247,6 +1247,8 @@ foundation.
 
 ### Pocket Chat verification targets
 
+- **C3 as built:** `SettingsPopover` (in `ChatTab.tsx`) holds Temperature, Max reply and Thinking; the composer
+  textarea is sized from `scrollHeight` in a layout effect and capped at `max-h-44`.
 - **C2 as built:** Only Pocket Chat opts into `full-height`. The shell uses the dynamic viewport height where
   supported, with safe-area padding, and keeps the rest of the routes on the existing contained layout. The
   conversation list has its own scroll area; the transcript fills and scrolls within the remaining height. On

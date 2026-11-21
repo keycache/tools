@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useDeferredValue, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { AlertTriangle, CheckCircle2, Download, HardDrive, Loader2, Mic, PanelLeft, Paperclip, Send, Square, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Download, HardDrive, Loader2, Mic, PanelLeft, Paperclip, Send, SlidersHorizontal, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConversationList } from '@/components/pocket-chat/ConversationList'
 import { ModelGate, type ModelSource } from '@/components/edge-ai/ModelGate'
@@ -140,6 +140,15 @@ export function ChatTab({ active, visited, cache, headerActions }: Props) {
   const [preparing, setPreparing] = useState(false)
   const [dragging, setDragging] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  // Size the textarea to its content; max-h on the element caps it and enables internal scrolling.
+  useLayoutEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [input])
 
   // Revoke every preview URL when the tab unmounts.
   const urls = useRef(new Set<string>())
@@ -573,10 +582,10 @@ export function ChatTab({ active, visited, cache, headerActions }: Props) {
             )}
             <ErrorNote>{error ?? capture.error}</ErrorNote>
 
-        {/* Fixed-height composer: the thumbnail strip takes space from the textarea, so nothing below moves. */}
+        {/* The composer grows with its text (up to ~8 lines); the transcript above takes whatever height is left. */}
         <div
           className={cn(
-            'flex h-36 flex-col overflow-hidden rounded-lg border transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50',
+            'flex shrink-0 flex-col overflow-hidden rounded-lg border transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50',
             dragging && 'border-primary bg-muted',
             !ready && 'opacity-50',
           )}
@@ -639,6 +648,8 @@ export function ChatTab({ active, visited, cache, headerActions }: Props) {
           </label>
           <textarea
             id="gemma-input"
+            ref={inputRef}
+            rows={1}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -659,7 +670,7 @@ export function ChatTab({ active, visited, cache, headerActions }: Props) {
             }}
             placeholder={ready ? 'Ask Gemma anything… (drop or paste images or audio to ask about them)' : 'Load Gemma to start chatting.'}
             disabled={!ready}
-            className="min-h-0 w-full flex-1 resize-none bg-transparent px-3 py-2 text-sm outline-none"
+            className="max-h-44 min-h-10 w-full resize-none overflow-y-auto bg-transparent px-3 py-2 text-sm leading-5 outline-none"
           />
         </div>
 
@@ -691,37 +702,8 @@ export function ChatTab({ active, visited, cache, headerActions }: Props) {
               {capture.recording ? `Stop · ${capture.elapsed.toFixed(1)}s` : 'Record'}
             </Button>
           </div>
-          <label className="flex items-center gap-2 text-sm">
-            <span className="font-medium">Temperature</span>
-            <input
-              type="range"
-              min={0}
-              max={1.5}
-              step={0.1}
-              value={settings.temperature}
-              onChange={(e) => setSettings({ ...settings, temperature: Number(e.target.value) })}
-              className="w-28 accent-primary"
-              aria-valuetext={settings.temperature === 0 ? '0, deterministic' : String(settings.temperature)}
-            />
-            <span className="w-24 text-xs tabular-nums text-muted-foreground">{settings.temperature === 0 ? '0 · deterministic' : settings.temperature.toFixed(1)}</span>
-          </label>
-          <div className="flex items-center gap-3 text-sm">
-            <label htmlFor="gemma-max-tokens" className="mr-1 font-medium">
-              Max reply
-            </label>
-            <Select id="gemma-max-tokens" value={settings.maxNewTokens} onChange={(e) => setSettings({ ...settings, maxNewTokens: Number(e.target.value) })}>
-              {MAX_TOKEN_OPTIONS.map((n) => (
-                <option key={n} value={n}>
-                  {n} tokens
-                </option>
-              ))}
-            </Select>
-          </div>
-          <label className="flex h-9 items-center gap-2 text-sm">
-            <input type="checkbox" checked={settings.thinking} onChange={(e) => setSettings({ ...settings, thinking: e.target.checked })} className="size-4 accent-primary" />
-            Thinking
-          </label>
           <div className="ml-auto flex items-center gap-2">
+            <SettingsPopover settings={settings} onChange={setSettings} />
             {busy ? (
               <Button variant="destructive" onClick={() => gemma.stop()} className="h-9 gap-2">
                 <Square className="size-4" /> Stop
@@ -745,6 +727,75 @@ export function ChatTab({ active, visited, cache, headerActions }: Props) {
           </div>
         </section>
       </div>
+    </div>
+  )
+}
+
+function SettingsPopover({ settings, onChange }: { settings: GenSettings; onChange: (s: GenSettings) => void }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
+
+  return (
+    <div
+      ref={ref}
+      className="relative"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && open) {
+          e.stopPropagation()
+          setOpen(false)
+          buttonRef.current?.focus()
+        }
+      }}
+    >
+      <Button ref={buttonRef} variant="outline" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls="gemma-settings" className="h-9 gap-2">
+        <SlidersHorizontal className="size-4" /> Settings
+      </Button>
+      {open && (
+        <div id="gemma-settings" role="group" aria-label="Generation settings" className="absolute right-0 bottom-full z-20 mb-2 w-72 space-y-4 rounded-xl border bg-background p-4 text-sm shadow-lg">
+          <label className="block space-y-1.5">
+            <span className="flex items-center justify-between">
+              <span className="font-medium">Temperature</span>
+              <span className="text-xs tabular-nums text-muted-foreground">{settings.temperature === 0 ? '0 · deterministic' : settings.temperature.toFixed(1)}</span>
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={1.5}
+              step={0.1}
+              value={settings.temperature}
+              onChange={(e) => onChange({ ...settings, temperature: Number(e.target.value) })}
+              className="w-full accent-primary"
+              aria-valuetext={settings.temperature === 0 ? '0, deterministic' : String(settings.temperature)}
+            />
+          </label>
+          <div className="flex items-center justify-between gap-3">
+            <label htmlFor="gemma-max-tokens" className="font-medium">
+              Max reply
+            </label>
+            <Select id="gemma-max-tokens" value={settings.maxNewTokens} onChange={(e) => onChange({ ...settings, maxNewTokens: Number(e.target.value) })}>
+              {MAX_TOKEN_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n} tokens
+                </option>
+              ))}
+            </Select>
+          </div>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={settings.thinking} onChange={(e) => onChange({ ...settings, thinking: e.target.checked })} className="size-4 accent-primary" />
+            Thinking
+          </label>
+        </div>
+      )}
     </div>
   )
 }
