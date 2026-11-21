@@ -103,9 +103,14 @@ src/lib/gemma/
   conversation.ts    Template formatting, history trimming, thinking-channel parser, error classification
   storage.ts         IndexedDB persistence for conversations (ChatStore, titleFrom, last-open id)
 src/components/edge-ai/
-  ChatTab.tsx        Gate + transcript + composer with image/audio attachments (Attach / drop / paste / Record)
   useAudioCapture.ts Shared mic recording + audio-file decoding to 16 kHz mono PCM (also used by Listen's AudioInput)
   StorageMenu.tsx    "Stored in browser · Clear" menu
+  ModelGate.tsx      Shared model gate used by Cactus, Gemma and Chatterbox
+  shared.tsx         Shared tool controls and device summary
+  useHiddenWhile.ts  Hidden-tab generation marker
+  useOnline.ts       Online/offline state
+src/components/pocket-chat/  (Phase C1)
+  ChatTab.tsx        Gate + transcript + composer with image/audio attachments (Attach / drop / paste / Record)
   Markdown.tsx       Safe GFM renderer for assistant replies (lazy chunk)
   ConversationList.tsx  Saved-chat list: new / select / rename / delete (side column ≥ lg, drawer below)
 ```
@@ -117,8 +122,8 @@ src/components/edge-ai/
   incl. `checking`/`unsupported`, progress, error, cached, downloadBytes, origin, load?, unsupported?, blocked?,
   unavailableNote?). `CactusModelGate` adapts the Cactus `useModel()`; `ChatTab` builds its source from the
   capability check (and, from Phase 1, `useGemma()`).
-- `EdgeAiStudioTool.TABS` gains a `chat` entry with no Cactus `model`; ChatTab renders its own gate.
-- The capability check runs only after the Chat tab is first opened (`visited` set in `EdgeAiStudioTool`).
+- Originally, `EdgeAiStudioTool.TABS` had a `chat` entry with no Cactus `model`; ChatTab rendered its own gate.
+- The capability check ran only after the Chat tab was first opened (`visited` set in `EdgeAiStudioTool`).
 
 > This describes the original as-built placement. The planned standalone route and full-height layout are specified
 > in [Pocket Chat](#pocket-chat-standalone-planned).
@@ -1168,23 +1173,24 @@ Summary line under the text box: "3 speakers · 14 turns · about 1 min 40 s of 
 
 ---
 
-## Pocket Chat (standalone, planned)
+## Pocket Chat (standalone; C1 done, C2–C5 planned)
 
 Companion to [PLAN.md — Pocket Chat](./PLAN.md#pocket-chat-standalone-tool-and-prompt-templates). This section is
-the agreed target design for moving Gemma Chat out of Edge AI Studio; it does not describe the current implementation.
-The existing Gemma worker, model cache and `edge-ai-chat` IndexedDB data remain the foundation.
+the agreed target design for moving Gemma Chat out of Edge AI Studio. C1 is implemented; the full-height redesign
+and templates remain planned. The existing Gemma worker, model cache and `edge-ai-chat` IndexedDB data remain the
+foundation.
 
 ### Placement and migration
 
 - **Tool name / route:** Pocket Chat, hash route `#/pocket-chat`.
-- **Registry:** add the standalone tool to `src/tools.ts`. Add an opt-in full-height page layout field to `Tool`;
+- **Registry:** `pocket-chat` is registered in `src/tools.ts`. C2 will add an opt-in full-height page layout field to `Tool`;
   `App.tsx` uses that layout only for Pocket Chat. All other tool routes keep the existing contained `max-w-6xl`
   shell, title and padding.
-- **Edge AI Studio:** remove its Chat tab and Gemma / Saved chats entries from its storage menu. Keep Listen, See,
-  Act and Speak. Pocket Chat gets its own storage menu for Gemma weights and Saved chats.
-- **Component ownership:** move Chat-only `ChatTab`, `ConversationList` and `Markdown` to
-  `src/components/pocket-chat/`; keep shared `ModelGate`, `StorageMenu`, `useAudioCapture`, `shared.tsx`,
-  `useHiddenWhile` and `useOnline` under `src/components/edge-ai/`.
+- **Edge AI Studio:** Chat and its Gemma / Saved chats entries have been removed from its storage menu. It keeps
+  Listen, See, Act and Speak. Pocket Chat owns the storage menu for Gemma weights and Saved chats.
+- **Component ownership:** Chat-only `ChatTab`, `ConversationList` and `Markdown` now live under
+  `src/components/pocket-chat/`; shared `ModelGate`, `StorageMenu`, `useAudioCapture`, `shared.tsx`,
+  `useHiddenWhile` and `useOnline` remain under `src/components/edge-ai/`.
 - **Preserve data:** do not rename the OPFS Gemma directory or IndexedDB database `edge-ai-chat`. Existing
   conversations, attachments and last-open conversation must continue to work after the route change.
 

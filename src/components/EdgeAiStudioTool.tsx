@@ -1,8 +1,7 @@
 import { useState } from 'react'
-import { AudioLines, Ear, Eye, MessagesSquare, Wand2 } from 'lucide-react'
+import { AudioLines, Ear, Eye, Wand2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ActTab } from '@/components/edge-ai/ActTab'
-import { ChatTab } from '@/components/edge-ai/ChatTab'
 import { ListenTab } from '@/components/edge-ai/ListenTab'
 import { CactusModelGate } from '@/components/edge-ai/ModelGate'
 import { SeeTab } from '@/components/edge-ai/SeeTab'
@@ -10,17 +9,15 @@ import { SpeakTab } from '@/components/edge-ai/SpeakTab'
 import { StorageMenu } from '@/components/edge-ai/StorageMenu'
 import { isCacheSupported, type ModelId } from '@/lib/cactus/assets'
 import { useCacheInfo } from '@/lib/cactus/client'
-import { useChatStorage, useGemmaCache } from '@/lib/gemma/hooks'
 import { useTtsCache } from '@/lib/tts/hooks'
 
-type TabId = 'listen' | 'see' | 'act' | 'chat' | 'speak'
+type TabId = 'listen' | 'see' | 'act' | 'speak'
 
 const TABS: { id: TabId; label: string; icon: typeof Wand2; model?: ModelId }[] = [
   { id: 'listen', label: 'Listen', model: 'whistle', icon: Ear },
   { id: 'see', label: 'See', model: 'mirage', icon: Eye },
   { id: 'act', label: 'Act', model: 'needle', icon: Wand2 },
-  // Gemma and Chatterbox run on Transformers.js, not Cactus; their gates live inside ChatTab / SpeakTab.
-  { id: 'chat', label: 'Chat', icon: MessagesSquare },
+  // Chatterbox runs on Transformers.js, not Cactus; its gate lives inside SpeakTab.
   { id: 'speak', label: 'Speak', icon: AudioLines },
 ]
 
@@ -28,9 +25,7 @@ export function EdgeAiStudioTool() {
   const [active, setActive] = useState<TabId>(TABS[0].id)
   const [visited, setVisited] = useState<Set<TabId>>(() => new Set([TABS[0].id]))
   const cache = useCacheInfo()
-  const gemmaCache = useGemmaCache()
   const ttsCache = useTtsCache()
-  const chats = useChatStorage()
 
   const open = (id: TabId) => {
     setActive(id)
@@ -40,8 +35,8 @@ export function EdgeAiStudioTool() {
   return (
     <div className="space-y-6">
       <p className="text-muted-foreground">
-        AI models running entirely in your browser. Transcribe speech, understand images, turn requests into tool calls,
-        and chat — no server, no uploads, works offline once downloaded.
+        AI models running entirely in your browser. Transcribe speech, understand images, turn requests into tool calls
+        and synthesize speech — no server, no uploads, works offline once downloaded.
       </p>
 
       <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Edge AI Studio tasks">
@@ -65,16 +60,7 @@ export function EdgeAiStudioTool() {
             <StorageMenu
               entries={[
                 { id: 'cactus', label: 'Listen · See · Act models', bytes: cache.bytes, clear: cache.clear },
-                { id: 'gemma', label: 'Chat model (Gemma)', bytes: gemmaCache.bytes, clear: gemmaCache.clear },
                 { id: 'tts', label: 'Speak model (Chatterbox)', bytes: ttsCache.bytes, clear: ttsCache.clear },
-                {
-                  id: 'chats',
-                  label: `Saved chats (${chats.conversations})`,
-                  bytes: chats.bytes,
-                  clear: chats.clear,
-                  // Models are safe to pre-select (re-downloadable); conversations are not.
-                  preselect: false,
-                },
               ]}
             />
           ) : (
@@ -90,7 +76,6 @@ export function EdgeAiStudioTool() {
           {id === 'listen' && <ListenTab />}
           {id === 'see' && <SeeTab />}
           {id === 'act' && <ActTab />}
-          {id === 'chat' && <ChatTab active={active === 'chat'} visited={visited.has('chat')} cache={gemmaCache} />}
           {id === 'speak' && <SpeakTab active={active === 'speak'} visited={visited.has('speak')} cache={ttsCache} />}
         </div>
       ))}

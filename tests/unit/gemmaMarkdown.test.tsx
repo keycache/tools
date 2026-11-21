@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import Markdown from '@/components/edge-ai/Markdown'
+import Markdown from '@/components/pocket-chat/Markdown'
 
 function render(text: string): HTMLElement {
   const host = document.createElement('div')

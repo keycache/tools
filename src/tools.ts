@@ -6,6 +6,7 @@ import { DateMathTool } from '@/components/DateMathTool'
 import { ImageCompressionTool } from '@/components/ImageCompressionTool'
 import { PdfCompressionTool } from '@/components/PdfCompressionTool'
 import { EdgeAiStudioTool } from '@/components/EdgeAiStudioTool'
+import { PocketChatTool } from '@/components/PocketChatTool'
 
 export interface Tool {
   id: string
@@ -54,7 +55,13 @@ export const TOOLS: Tool[] = [
   {
     id: 'edge-ai-studio',
     name: 'Edge AI Studio',
-    description: 'Speech-to-text, image understanding, tool calling and a multimodal Gemma chat — AI models running fully in your browser, offline once downloaded.',
+    description: 'Speech-to-text, image understanding, tool calling and speech synthesis — AI models running fully in your browser, offline once downloaded.',
     component: EdgeAiStudioTool,
+  },
+  {
+    id: 'pocket-chat',
+    name: 'Pocket Chat',
+    description: 'Chat with a multimodal Gemma model running entirely in your browser, with image and audio input.',
+    component: PocketChatTool,
   },
 ]

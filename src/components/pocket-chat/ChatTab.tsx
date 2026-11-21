@@ -1,7 +1,7 @@
 import { Suspense, lazy, useCallback, useDeferredValue, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Loader2, Mic, PanelLeft, Paperclip, Send, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { ConversationList } from '@/components/edge-ai/ConversationList'
+import { ConversationList } from '@/components/pocket-chat/ConversationList'
 import { ModelGate, type ModelSource } from '@/components/edge-ai/ModelGate'
 import { CopyButton, DeviceSummary, ErrorNote, Select } from '@/components/edge-ai/shared'
 import { useHiddenWhile } from '@/components/edge-ai/useHiddenWhile'
@@ -120,7 +120,7 @@ export function ChatTab({ active, visited, cache }: Props) {
   const capability = useGemmaCapability(visited, cache.ready)
   const state = useGemma()
   useEffect(() => {
-    if (visited) void import('@/components/edge-ai/Markdown')
+    if (visited) void import('@/components/pocket-chat/Markdown')
   }, [visited])
   const device = capability?.device
   const dtype = capability?.dtype
@@ -733,7 +733,7 @@ function UserBubble({ text, images, audio }: { text: string; images?: Attachment
   )
 }
 
-const Markdown = lazy(() => import('@/components/edge-ai/Markdown'))
+const Markdown = lazy(() => import('@/components/pocket-chat/Markdown'))
 
 function AssistantText({ text }: { text: string }) {
   // Streaming deltas arrive up to 20×/s; a deferred value keeps re-parsing interruptible so typing stays smooth.

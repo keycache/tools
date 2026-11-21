@@ -234,16 +234,22 @@ redesigns it as **Pocket Chat**, a dedicated full-height tool. Its decisions and
 | C4 | Keyboard/mobile/accessibility polish, docs and browser verification | C1–C3 |
 | C5 | Built-in and imported prompt templates, Settings form, render-and-submit flow | C1–C4 |
 
-### Phase C1 — Move Chat into its own tool
+### Phase C1 — Move Chat into its own tool ✅ (2026-11-21)
 
-- [ ] Register `pocket-chat` in the tool catalog and move the Chat-only components (`ChatTab`, `ConversationList`,
+- [x] Register `pocket-chat` in the tool catalog and move the Chat-only components (`ChatTab`, `ConversationList`,
       `Markdown`) under `src/components/pocket-chat/`.
-- [ ] Remove Chat from the Edge AI Studio tabs and its Gemma / Saved chats entries from that tool's storage menu.
-- [ ] Give Pocket Chat its own Gemma / Saved chats storage menu; update both tool descriptions.
-- [ ] Preserve the `edge-ai-chat` IndexedDB name, Gemma OPFS cache, routes for other tools, and saved conversation data.
+- [x] Remove Chat from the Edge AI Studio tabs and its Gemma / Saved chats entries from that tool's storage menu.
+- [x] Give Pocket Chat its own Gemma / Saved chats storage menu; update both tool descriptions.
+- [x] Preserve the `edge-ai-chat` IndexedDB name, Gemma OPFS cache, routes for other tools, and saved conversation data.
 
 **Done when:** `#/pocket-chat` opens the existing chat and conversations; Edge AI Studio contains Listen, See, Act and
 Speak only; existing routes and saved chats remain usable.
+
+**Result:** met. The registry now exposes Pocket Chat at `#/pocket-chat`; Chat-only UI moved to
+`src/components/pocket-chat/`; Edge AI Studio retains Listen, See, Act and Speak and its storage menu lists only
+Cactus and Chatterbox. Pocket Chat owns the Gemma / Saved chats menu. Existing Gemma cache paths and the
+`edge-ai-chat` database are unchanged; no data migration is needed. Browser checks confirmed both routes and the
+studio tab list. Typecheck, lint, build and all 225 unit tests pass.
 
 ### Phase C2 — Full-height chat layout
 
