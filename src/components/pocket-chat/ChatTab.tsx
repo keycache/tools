@@ -2,6 +2,7 @@ import { Suspense, lazy, useCallback, useDeferredValue, useEffect, useLayoutEffe
 import { AlertTriangle, CheckCircle2, Download, HardDrive, Loader2, Mic, PanelLeft, Paperclip, Send, SlidersHorizontal, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConversationList } from '@/components/pocket-chat/ConversationList'
+import { PromptTemplates } from '@/components/pocket-chat/PromptTemplates'
 import { ModelGate, type ModelSource } from '@/components/edge-ai/ModelGate'
 import { CopyButton, DeviceSummary, ErrorNote, Select } from '@/components/edge-ai/shared'
 import { useHiddenWhile } from '@/components/edge-ai/useHiddenWhile'
@@ -403,26 +404,30 @@ export function ChatTab({ active, visited, cache, headerActions }: Props) {
     setAttachments((a) => a.filter((x) => x.id !== id))
   }
 
-  async function send() {
-    if (!canSend) return
+  async function send(templateText?: string) {
+    const fromTemplate = templateText !== undefined
+    if (fromTemplate ? !ready || busy : !canSend) return
+    if (fromTemplate) startNewChat()
     const forSession = session.current
     const sentWith = settings
     const history: ChatMessage[] = [
-      ...messages,
+      ...(fromTemplate ? [] : messages),
       {
         id: newChatId(),
         role: 'user',
-        text: input.trim(),
-        images: attachments.length ? attachments : undefined,
-        audio: audioClip ?? undefined,
+        text: fromTemplate ? templateText : input.trim(),
+        images: !fromTemplate && attachments.length ? attachments : undefined,
+        audio: (!fromTemplate && audioClip) || undefined,
         createdAt: Date.now(),
       },
     ]
     messagesRef.current = history
     setMessages(history)
-    setInput('')
-    setAttachments([])
-    setAudioClip(null)
+    if (!fromTemplate) {
+      setInput('')
+      setAttachments([])
+      setAudioClip(null)
+    }
     setError(null)
     persist(history, forSession, sentWith)
     try {
@@ -701,6 +706,7 @@ export function ChatTab({ active, visited, cache, headerActions }: Props) {
               {capture.recording ? <Square className="size-4" /> : <Mic className="size-4" />}
               {capture.recording ? `Stop · ${capture.elapsed.toFixed(1)}s` : 'Record'}
             </Button>
+            <PromptTemplates disabled={!ready || busy} onSubmit={(text) => void send(text)} />
           </div>
           <div className="ml-auto flex items-center gap-2">
             <SettingsPopover settings={settings} onChange={setSettings} />

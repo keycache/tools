@@ -297,22 +297,24 @@ reload and clear-storage behavior. The first two C4 boxes stay unchecked until t
 
 ### Phase C5 — Prompt templates
 
-- [ ] Provide built-in Markdown templates and an import action for user-supplied Markdown files; make templates
+- [x] Provide built-in Markdown templates and an import action for user-supplied Markdown files; make templates
       selectable in Pocket Chat.
-- [ ] Parse the example-style `## Settings` block into a form, seed each field from its example value and show its
+- [x] Parse the example-style `## Settings` block into a form, seed each field from its example value and show its
       matching description as help text.
-- [ ] On submit, replace the template's setting values, start a new conversation and send the completed template as
+- [x] On submit, replace the template's setting values, start a new conversation and send the completed template as
       the first user message. Keep subsequent turns as ordinary chat.
-- [ ] Add template parsing/rendering tests, including malformed or missing Settings blocks and values containing
+- [x] Add template parsing/rendering tests, including malformed or missing Settings blocks and values containing
       Markdown-sensitive characters.
-- [ ] Document supported template syntax and import/storage behavior.
+- [x] Document supported template syntax and import/storage behavior.
 
 **Done when:** the `tts-conversation.md` example can be selected/imported, its settings can be filled, and the
 rendered instructions plus values reach the model in the first turn without changing normal follow-up behavior.
 
-**Open implementation detail:** decide how imported templates persist across reloads and how field types/validation
-are declared. The initial format is the example's `KEY = value` block; values can be text fields unless explicit
-metadata is agreed before implementation.
+**Decisions:** imported templates persist in localStorage; all fields are plain text with no declared types or
+validation; imports are validated up front.
+
+**Result:** implemented and unit-tested; typecheck and build pass. Not verified: submitting a template end to end
+against a loaded Gemma model, and the popover on phone widths.
 
 ## Risks
 

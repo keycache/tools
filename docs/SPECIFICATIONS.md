@@ -1173,7 +1173,7 @@ Summary line under the text box: "3 speakers · 14 turns · about 1 min 40 s of 
 
 ---
 
-## Pocket Chat (standalone; C1–C3 done, C4–C5 planned)
+## Pocket Chat (standalone; C1–C5 done, C4 partly verified)
 
 Companion to [PLAN.md — Pocket Chat](./PLAN.md#pocket-chat-standalone-tool-and-prompt-templates). This section is
 the agreed target design for moving Gemma Chat out of Edge AI Studio. C1–C3 are implemented; polish and
@@ -1241,9 +1241,17 @@ foundation.
   instructions in history. Do not reapply the template to later turns; subsequent messages are normal chat.
 - The attached TTS conversation prompt is an example of a *template input*, not content to hard-code as the only
   template. It must be possible to add other built-in or imported templates.
-- **Still to decide before implementation:** how imported templates persist across reloads, and how authors declare
-  field types, required values and validation constraints. Until a schema is agreed, treat values as text fields
-  seeded from the Settings block; do not infer validation rules from prose.
+- **As built:** `src/lib/gemma/promptTemplate.ts` (parse/render), `templateStore.ts` (built-ins + imports) and
+  `components/pocket-chat/PromptTemplates.tsx` (Templates popover beside Attach/Record, enabled when the model is
+  ready and idle). The built-in is `src/lib/gemma/templates/tts-conversation.md`.
+- **Syntax:** a heading containing "Settings", then the first fenced block (``` or ~~~) of `KEY = value` lines
+  (`KEY` matches `[A-Za-z_]\w*`, split at the first `=`), then optional `- KEY: description` lines (wrapped lines
+  join). Missing heading, missing/unclosed fence, malformed line, empty block or duplicate key raise a
+  `TemplateError` shown to the user.
+- **Decisions:** imported templates are validated on import (max 200 KB) and persist in localStorage
+  (`pocket-chat-templates-v1`) with a delete action. All fields are plain single-line text; empty values are
+  allowed; no types or validation are inferred. Rendering replaces only value lines (alignment kept); newlines in
+  values become spaces and runs of 3+ backticks/tildes are reduced so a value cannot close the fence.
 
 ### Pocket Chat verification targets
 
