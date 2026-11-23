@@ -2,6 +2,16 @@
 
 This file documents non-obvious findings, solutions, and missteps encountered while developing this tools application. Entries are added when solving issues that required more than 2-3 attempts.
 
+## ONNX Runtime WebGPU Runtime Asset Compatibility
+
+**Problem**: The image worker's WebGPU session failed with `webgpuInit is not a function` when configured with the installed ONNX Runtime nightly's `jsep` assets.
+
+**Solution**: Reuse `ORT_RUNTIME_URLS` from `src/lib/transformers/runtime.ts`. Its matching `asyncify` JavaScript/WASM pair exports the WebGPU initialization entry point and works with `onnxruntime-web/webgpu`.
+
+**Missteps**: Assuming that the `jsep` filename alone guaranteed compatibility with this nightly's WebGPU package entry point.
+
+**Key Insight**: ONNX Runtime's package import, JavaScript glue, and WASM binary must agree. Check the actual runtime exports and verify inference in both development and the production bundle.
+
 ## PDF.js Worker Setup in Bundled Environment
 
 **Problem**: PDF compression tool failed at runtime with "Setting up fake worker failed: 'error loading dynamically imported module from CDN'" when trying to load the PDF.js worker from a CDN URL.

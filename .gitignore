@@ -27,3 +27,8 @@ dist-ssr
 # Speak's built-in reference voices ship with the site (docs/SPECIFICATIONS.md §S17)
 !public/voices/*.wav
 .venv/
+/public/models/watermark-*.onnx
+/public/models/upscale-*.onnx
+/public/models/manifest.json
+/public/models/manifest.json.part
+/public/models/LICENSE-2.0.txt

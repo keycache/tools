@@ -1,0 +1,69 @@
+Image AI models - third-party licenses and provenance
+====================================================
+
+Both model publishers declare Apache License 2.0. The complete license is
+included in Apache-2.0.txt in this directory and copied to
+../models/LICENSE-2.0.txt alongside the prepared model assets.
+This attribution file must accompany redistributed model assets.
+
+Watermark Removal
+-----------------
+Model: foduucom/Watermark_Removal
+Publisher: FODUU AI
+Model card authors: Nehul Agrawal and Priyal Mehta
+Source: https://huggingface.co/foduucom/Watermark_Removal
+Revision: e75b840dc74b7d213833c4ef5cc1cea63c19e81d
+License declaration: Apache-2.0 (model-card metadata).
+Original weight SHA-256:
+dfceb0199f80877802c6f0c5abf412f39ee82a634cbbcf072d05ce7c06e33d3b
+
+Changes made for this application: converted the PyTorch state_dict to a fixed
+1x3x256x256 FP32 ONNX graph using the published architecture. Pooling/upsampling
+are expressed as functional operations. No retraining or weight quantization.
+Inference clamps output to [0,1], supports repeated passes, and resizes the
+final reconstruction to the input aspect ratio within 256x256.
+
+The publisher describes a custom training dataset without comprehensive
+provenance. The license declaration is not a warranty of third-party rights.
+Edit only images you own or have permission to modify.
+
+Image Upscaling
+---------------
+Model: Swin2SR classical super-resolution x2
+Authors: Conde et al.
+Original model: https://huggingface.co/caidas/swin2SR-classical-sr-x2-64
+Original code: https://github.com/mv-lab/swin2sr
+ONNX conversion: Xenova
+Source: https://huggingface.co/Xenova/swin2SR-classical-sr-x2-64
+Revision: 71e28a83cfb61f5dc95bafdeebf2815167914f2b
+License: Apache-2.0 (original checkpoint, ONNX model cards, and upstream code).
+Distributed ONNX SHA-256:
+6dde3fe2440543ccae7c40d175609f83c18aeaa3d8456745c4329ef97ae744bd
+
+The FP32 ONNX graph is redistributed without changes. This application's
+inference uses contextual tiles and symmetric padding. 3x enlargement uses
+two 2x passes followed by browser resampling; 4x uses two 2x passes. Browser
+resampling is not guaranteed to match the Python/Pillow Lanczos implementation.
+
+ONNX Runtime Web
+----------------
+Copyright (c) Microsoft Corporation. All rights reserved.
+Licensed under the MIT License:
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

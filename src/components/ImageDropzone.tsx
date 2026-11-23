@@ -4,16 +4,19 @@ import { cn } from '@/lib/utils'
 
 interface Props {
   onFile: (file: File) => void
+  onInvalidFile?: (message: string) => void
   className?: string
 }
 
-export function ImageDropzone({ onFile, className }: Props) {
+export function ImageDropzone({ onFile, onInvalidFile, className }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
 
   function handleFiles(files: FileList | null) {
     const file = files?.[0]
-    if (file && file.type.startsWith('image/')) onFile(file)
+    if (!file) return
+    if (file.type.startsWith('image/')) onFile(file)
+    else onInvalidFile?.('Please select a valid image file.')
   }
 
   return (

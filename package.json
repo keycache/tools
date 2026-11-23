@@ -5,12 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run prepare:image-models && tsc -b && vite build",
+    "prepare:image-models": "node scripts/prepare-image-models.mjs",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist --dotfiles"
+    "deploy": "node -e \"console.error('Deploy using the GitHub Pages Actions workflow. The watermark model exceeds the Git branch file limit.'); process.exit(1)\""
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -21,6 +21,7 @@
     "clsx": "^2.1.1",
     "lucide-react": "^1.65.0",
     "onnxruntime-node": "^1.31.1",
+    "onnxruntime-web": "1.32.0-dev.20261110-53934832d",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.4.299",
     "react": "^19.3.1",

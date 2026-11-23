@@ -7,6 +7,8 @@ import { ImageCompressionTool } from '@/components/ImageCompressionTool'
 import { PdfCompressionTool } from '@/components/PdfCompressionTool'
 import { EdgeAiStudioTool } from '@/components/EdgeAiStudioTool'
 import { PocketChatTool } from '@/components/PocketChatTool'
+import { WatermarkRemovalTool } from '@/components/WatermarkRemovalTool'
+import { ImageUpscalingTool } from '@/components/ImageUpscalingTool'
 
 export interface Tool {
   id: string
@@ -46,6 +48,18 @@ export const TOOLS: Tool[] = [
     name: 'Image Compression',
     description: 'Compress images with quality control. Real-time size preview.',
     component: ImageCompressionTool,
+  },
+  {
+    id: 'watermark-removal',
+    name: 'Watermark Removal',
+    description: 'Experimental local AI watermark removal with 1-5 passes. Aspect-ratio-preserving output within 256 x 256.',
+    component: WatermarkRemovalTool,
+  },
+  {
+    id: 'image-upscaling',
+    name: 'Image Upscaling',
+    description: 'Upscale photos by 2x, 3x, or 4x using AI on your device. Preserve aspect ratio and download a PNG.',
+    component: ImageUpscalingTool,
   },
   {
     id: 'pdf-compression',
