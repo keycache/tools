@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, FileText, Trash2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { CopyButton } from '@/components/edge-ai/shared'
 import { initialValues, parseTemplate, renderTemplate, TemplateError } from '@/lib/gemma/promptTemplate'
 import { BUILTIN_TEMPLATES, importTemplate, loadImported, removeImported, type StoredTemplate } from '@/lib/gemma/templateStore'
 
 interface Props {
-  /** Starting a template begins a new chat, so it needs a loaded model that isn't mid-reply. */
+  /** Template controls are unavailable while a reply is being generated. */
   disabled: boolean
-  /** Receives the rendered template; the caller starts a new conversation with it. */
+  /** Controls whether applying a template starts a chat or fills the composer for later. */
+  modelReady: boolean
+  /** Receives the rendered template. */
   onSubmit: (text: string) => void
 }
 
-export function PromptTemplates({ disabled, onSubmit }: Props) {
+export function PromptTemplates({ disabled, modelReady, onSubmit }: Props) {
   const [open, setOpen] = useState(false)
   const [imported, setImported] = useState<StoredTemplate[]>(loadImported)
   const [selected, setSelected] = useState<StoredTemplate | null>(null)
@@ -98,7 +101,10 @@ export function PromptTemplates({ disabled, onSubmit }: Props) {
         >
           {!selected || !parsed ? (
             <>
-              <p className="text-xs text-muted-foreground">Pick a template, fill in its settings, and Pocket Chat starts a new chat with the completed prompt.</p>
+              <p className="text-xs text-muted-foreground">
+                Pick a template and fill in its settings.
+                {modelReady ? ' Pocket Chat starts a new chat with the completed prompt.' : ' The completed prompt will be added to the composer so you can send it when Gemma is ready.'}
+              </p>
               <ul className="space-y-1">
                 {all.map((t) => (
                   <li key={t.id} className="flex items-center gap-1">
@@ -106,6 +112,7 @@ export function PromptTemplates({ disabled, onSubmit }: Props) {
                       {t.name}
                       {t.builtin && <span className="ml-2 text-xs text-muted-foreground">built-in</span>}
                     </button>
+                    <CopyButton text={t.markdown} label="Copy" className="h-6 px-2 text-xs" />
                     {!t.builtin && (
                       <button
                         type="button"
@@ -172,12 +179,13 @@ export function PromptTemplates({ disabled, onSubmit }: Props) {
                   </div>
                 )
               })}
-              <div className="flex justify-end gap-2">
+              <div className="flex items-center justify-end gap-2">
+                <CopyButton text={renderTemplate(parsed, values)} label="Copy prompt" className="mr-auto h-8 px-2 text-xs" />
                 <Button type="button" variant="ghost" size="sm" onClick={close}>
                   Cancel
                 </Button>
                 <Button type="submit" size="sm">
-                  Start chat
+                  {modelReady ? 'Start chat' : 'Use prompt'}
                 </Button>
               </div>
             </form>

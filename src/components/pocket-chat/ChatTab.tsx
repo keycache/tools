@@ -357,7 +357,7 @@ export function ChatTab({ active, visited, cache, headerActions }: Props) {
         trimmed,
       }
     })
-  }, !ready || busy)
+  }, busy)
 
   const canSend = ready && !busy && !preparing && !capture.busy && !capture.recording && (!!input.trim() || attachments.length > 0 || !!audioClip)
 
@@ -591,11 +591,10 @@ export function ChatTab({ active, visited, cache, headerActions }: Props) {
         <div
           className={cn(
             'flex shrink-0 flex-col overflow-hidden rounded-lg border transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50',
-            dragging && 'border-primary bg-muted',
-            !ready && 'opacity-50',
+            dragging && 'border-primary bg-muted'
           )}
           onDragOver={(e) => {
-            if (!ready || busy) return
+            if (busy) return
             e.preventDefault()
             setDragging(true)
           }}
@@ -605,7 +604,7 @@ export function ChatTab({ active, visited, cache, headerActions }: Props) {
           onDrop={(e) => {
             e.preventDefault()
             setDragging(false)
-            if (ready && !busy) addFiles([...e.dataTransfer.files])
+            if (!busy) addFiles([...e.dataTransfer.files])
           }}
         >
           {(attachments.length > 0 || preparing || !!audioClip || capture.busy) && (
@@ -673,15 +672,14 @@ export function ChatTab({ active, visited, cache, headerActions }: Props) {
                 addFiles(files)
               }
             }}
-            placeholder={ready ? 'Ask Gemma anything… (drop or paste images or audio to ask about them)' : 'Load Gemma to start chatting.'}
-            disabled={!ready}
+            placeholder={ready ? 'Ask Gemma anything… (drop or paste images or audio to ask about them)' : 'Type a prompt now; Send becomes available when Gemma is ready.'}
             className="max-h-44 min-h-10 w-full resize-none overflow-y-auto bg-transparent px-3 py-2 text-sm leading-5 outline-none"
           />
         </div>
 
         <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={!ready || busy || preparing || capture.recording} className="h-9 gap-2">
+            <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={busy || preparing || capture.recording} className="h-9 gap-2">
               <Paperclip className="size-4" /> Attach
             </Button>
             <input
@@ -699,14 +697,24 @@ export function ChatTab({ active, visited, cache, headerActions }: Props) {
             <Button
               variant={capture.recording ? 'destructive' : 'outline'}
               onClick={() => void capture.toggleRecording()}
-              disabled={!ready || busy || capture.busy}
+              disabled={busy || capture.busy}
               aria-pressed={capture.recording}
               className="h-9 gap-2"
             >
               {capture.recording ? <Square className="size-4" /> : <Mic className="size-4" />}
               {capture.recording ? `Stop · ${capture.elapsed.toFixed(1)}s` : 'Record'}
             </Button>
-            <PromptTemplates disabled={!ready || busy} onSubmit={(text) => void send(text)} />
+            <PromptTemplates
+              disabled={busy}
+              modelReady={ready}
+              onSubmit={(text) => {
+                if (ready) void send(text)
+                else {
+                  setInput(text)
+                  inputRef.current?.focus()
+                }
+              }}
+            />
           </div>
           <div className="ml-auto flex items-center gap-2">
             <SettingsPopover settings={settings} onChange={setSettings} />
