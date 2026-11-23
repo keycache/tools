@@ -10,7 +10,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "deploy": "node -e \"console.error('Deploy using the GitHub Pages Actions workflow. The watermark model exceeds the Git branch file limit.'); process.exit(1)\""
+    "deploy": "node -e \"console.error('Deploy using the GitHub Pages Actions workflow.'); process.exit(1)\""
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

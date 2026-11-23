@@ -18,8 +18,10 @@ Original weight SHA-256:
 dfceb0199f80877802c6f0c5abf412f39ee82a634cbbcf072d05ce7c06e33d3b
 
 Changes made for this application: converted the PyTorch state_dict to a fixed
-1x3x256x256 FP32 ONNX graph using the published architecture. Pooling/upsampling
-are expressed as functional operations. No retraining or weight quantization.
+1x3x256x256 ONNX graph using the published architecture. Learned weights are
+rounded to FP16 for storage and cast back to FP32 for computation, inputs, and
+outputs, preserving browser CPU/WASM compatibility. Pooling/upsampling are
+expressed as functional operations. No retraining or integer quantization.
 Inference clamps output to [0,1], supports repeated passes, and resizes the
 final reconstruction to the input aspect ratio within 256x256.
 

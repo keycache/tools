@@ -2,7 +2,8 @@
 
 Architecture adapted from foduucom/Watermark_Removal at
 e75b840dc74b7d213833c4ef5cc1cea63c19e81d (declared Apache-2.0).
-Changes: export-only wrapper, functional pooling/upsampling, and numerical checks.
+Changes: export-only wrapper, functional pooling/upsampling, FP16 weight storage,
+and numerical checks. Computation and image inputs/outputs remain FP32.
 See public/licenses/image-models.txt and the distributed Apache-2.0 license.
 """
 
@@ -48,6 +49,24 @@ class WatermarkRemover(nn.Module):
         return self.final_layer(result)
 
 
+def store_fp16_weights(model: onnx.ModelProto) -> None:
+    """Keep FP32 computation for browser CPU compatibility, but halve weight storage."""
+    casts = []
+    for tensor in model.graph.initializer:
+        if tensor.data_type != onnx.TensorProto.FLOAT:
+            continue
+        values = onnx.numpy_helper.to_array(tensor)
+        if not np.isfinite(values).all() or np.any(np.abs(values) > np.finfo(np.float16).max):
+            raise ValueError(f"Weight {tensor.name} cannot be stored as finite FP16.")
+        name = tensor.name
+        stored_name = f"{name}__stored_fp16"
+        tensor.CopyFrom(onnx.numpy_helper.from_array(values.astype(np.float16), stored_name))
+        casts.append(onnx.helper.make_node("Cast", [stored_name], [name], to=onnx.TensorProto.FLOAT))
+    nodes = list(model.graph.node)
+    model.graph.ClearField("node")
+    model.graph.node.extend([*casts, *nodes])
+
+
 def export(checkpoint: Path, destination: Path) -> None:
     torch.set_num_threads(2)
     torch.manual_seed(0)
@@ -66,12 +85,36 @@ def export(checkpoint: Path, destination: Path) -> None:
         options = ort.SessionOptions()
         options.intra_op_num_threads = 2
         runtime = ort.InferenceSession(str(temporary), sess_options=options, providers=["CPUExecutionProvider"])
-        for label, image in (("random", sample), ("black", torch.zeros_like(sample)), ("white", torch.ones_like(sample))):
+        samples = (
+            ("random", sample),
+            ("black", torch.zeros_like(sample)),
+            ("white", torch.ones_like(sample)),
+            ("gradient", torch.linspace(0, 1, 256).expand_as(sample)),
+        )
+        references = []
+        for label, image in samples:
             with torch.inference_mode():
                 expected = model(image).numpy()
             actual = runtime.run(None, {"image": image.numpy()})[0]
             np.testing.assert_allclose(actual, expected, rtol=1e-3, atol=1e-4)
             print(f"{label} ONNX parity: max absolute error {np.max(np.abs(actual - expected)):.8f}")
+            references.append((label, image.numpy(), expected))
+        del runtime
+        graph = onnx.load(str(temporary))
+        store_fp16_weights(graph)
+        onnx.checker.check_model(graph)
+        onnx.save_model(graph, str(temporary))
+        if temporary.stat().st_size >= 100 * 1024 * 1024:
+            raise ValueError("The compressed watermark model must be smaller than GitHub's 100 MiB file limit.")
+        runtime = ort.InferenceSession(str(temporary), sess_options=options, providers=["CPUExecutionProvider"])
+        for label, image, expected in references:
+            actual = runtime.run(None, {"image": image})[0]
+            if not np.isfinite(actual).all():
+                raise ValueError(f"{label}: FP16 weights produced non-finite output.")
+            np.testing.assert_allclose(actual, expected, rtol=0, atol=1 / 255)
+            error = np.abs(actual - expected) * 255
+            print(f"{label} FP16 weight parity: max {error.max():.4f}, mean {error.mean():.4f} / 255")
+        print(f"FP16-stored model: {temporary.stat().st_size:,} bytes")
         temporary.replace(destination)
     finally:
         temporary.unlink(missing_ok=True)

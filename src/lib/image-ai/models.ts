@@ -11,7 +11,7 @@ export interface ModelAsset {
 }
 
 export const IMAGE_MODELS = {
-  watermark: { name: 'FODUU Watermark Removal', megabytes: 126, source: 'https://huggingface.co/foduucom/Watermark_Removal' },
+  watermark: { name: 'FODUU Watermark Removal', megabytes: 63, source: 'https://huggingface.co/foduucom/Watermark_Removal' },
   upscale: { name: 'Swin2SR 2x', megabytes: 55, source: 'https://huggingface.co/Xenova/swin2SR-classical-sr-x2-64' },
 }
 

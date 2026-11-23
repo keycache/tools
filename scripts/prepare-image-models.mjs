@@ -53,7 +53,7 @@ async function publish(source, name) {
 async function main() {
   await mkdir(output, { recursive: true })
   const checkpoint = path.join(cache, 'foduucom/Watermark_Removal/model.pth')
-  const watermark = path.join(cache, 'foduucom/Watermark_Removal/model.onnx')
+  const watermark = path.join(cache, 'foduucom/Watermark_Removal/model-fp16.onnx')
   const checkpointHash = 'dfceb0199f80877802c6f0c5abf412f39ee82a634cbbcf072d05ce7c06e33d3b'
   await download(hf('foduucom/Watermark_Removal', foduuRevision, 'model.pth'), checkpoint, checkpointHash)
   const exporter = path.join(root, 'scripts/export-watermark.py')
@@ -64,9 +64,7 @@ async function main() {
   const currentHash = await exists(watermark) ? await hash(watermark) : null
   const validReceipt = receipt?.checkpointHash === checkpointHash && receipt?.exporterHash === exporterHash
     && receipt?.requirementsHash === requirementsHash && receipt?.sha256 === currentHash
-  // Recognize the numerically validated CLI export once, then track export provenance.
-  const knownCliExport = !receipt && currentHash === 'df5fffea78aa46c1800662f295bb82d64997194dd04a78d87618d7b1aae196a4'
-  if (!validReceipt && !knownCliExport) {
+  if (!validReceipt) {
     const localPython = path.join(root, '.venv/bin/python')
     const python = process.env.PYTHON || (await exists(localPython) ? localPython : 'python3')
     const result = spawnSync(python, [exporter, checkpoint, watermark], { stdio: 'inherit' })

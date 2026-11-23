@@ -46,7 +46,10 @@ Third-party notices are in [base64.txt](public/licenses/base64.txt).
 ## Local image AI tools
 
 - **Watermark Removal** (`#/watermark-removal`): FODUU reconstruction, 1-5
-  passes, PNG output with the original aspect ratio within 256 x 256.
+  passes, PNG output with the original aspect ratio within 256 x 256. Weights
+  use FP16 storage (about 63 MB); computation and inputs/outputs remain FP32 for
+  WebGPU and CPU/WASM compatibility. Reduced precision can slightly change results;
+  it reduces download/storage size, not necessarily runtime memory usage.
 - **Image Upscaling** (`#/image-upscaling`): Swin2SR at 2x, 3x, or 4x.
   3x uses two 2x passes then downsampling; 4x uses two 2x passes.
 
@@ -73,11 +76,15 @@ npm run dev
 ```
 
 Preparation downloads pinned source weights into ignored `.data/models/`,
-exports and numerically checks the watermark ONNX model if necessary, and puts
-content-addressed ONNX files, a manifest, and Apache-2.0 text in
-`public/models/`. These generated files are ignored. A cold setup needs internet and about 180 MB of source-model
-downloads plus Python dependencies; browser model downloads total about 180 MB.
+exports and numerically checks the FP16-stored watermark ONNX model if necessary,
+and puts content-addressed ONNX files, a manifest, and Apache-2.0 text in
+`public/models/`. The export rejects files at or above 100 MiB and single-pass
+output errors above 1/255 on fixed test inputs. These generated files are ignored.
+A cold setup needs internet and about 180 MB of source-model
+downloads plus Python dependencies; browser model downloads total about 117 MB.
 `npm run build` also prepares these assets. Do not commit generated models.
+The new content hash triggers a fresh browser download rather than reusing old
+FP32 weights. "Delete downloaded model" also removes older cached versions.
 
 Licensing and provenance are in [image-models.txt](public/licenses/image-models.txt).
 Both publishers declare [Apache-2.0](public/licenses/Apache-2.0.txt); preserve that license and attribution when
@@ -91,9 +98,10 @@ static output as an artifact, including models and licenses. Set the repository'
 **Settings > Pages > Source** to **GitHub Actions**, then push to `main` or run
 the workflow manually. The `/tools/` base path is retained.
 
-The watermark file exceeds GitHub's 100 MiB regular Git-file limit. Consequently,
-the old branch-pushing `npm run deploy` path is disabled; do not use Git LFS as
-a Pages-serving workaround. No Python or inference server runs in production.
+The FP16-stored watermark file fits below GitHub's 100 MiB regular Git-file
+limit. The old branch-pushing `npm run deploy` path remains disabled; deployment
+continues through Actions artifacts. In **Settings > Environments > github-pages**,
+allow deployments from `main`. No Python or inference server runs in production.
 
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
