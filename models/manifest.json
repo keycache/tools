@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "models": {
+    "watermark": {
+      "file": "watermark-cd12e54f8b67b11ccff8a26fc6bc32b8939b7fb3b01411f9afa31e407227d853.onnx",
+      "sha256": "cd12e54f8b67b11ccff8a26fc6bc32b8939b7fb3b01411f9afa31e407227d853",
+      "bytes": 62769992
+    },
+    "upscale": {
+      "file": "upscale-6dde3fe2440543ccae7c40d175609f83c18aeaa3d8456745c4329ef97ae744bd.onnx",
+      "sha256": "6dde3fe2440543ccae7c40d175609f83c18aeaa3d8456745c4329ef97ae744bd",
+      "bytes": 54428699
+    }
+  }
+}
