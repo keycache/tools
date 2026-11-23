@@ -1,5 +1,48 @@
 # React + TypeScript + Vite
 
+## Universal Base64
+
+Open `#/base64` to encode any file or typed/pasted UTF-8 text as plain Base64, or reconstruct bytes from
+standard Base64, Base64URL, or a Base64 data URL. MIME types and extensions are
+not prerequisites. ASCII whitespace and omitted final padding are accepted;
+invalid characters, mixed alphabets, malformed padding, and nonzero trailing
+bits are rejected. Raw Base64 cannot recover the original filename.
+
+Both modes accept clipboard files with Ctrl+V / Cmd+V when the browser exposes
+them (including copied images). The first file replaces the current input and
+clears the previous result; conversion still requires the action button.
+Ordinary text pasting remains available in the text field. File pasting is
+ignored while a conversion is running, and pasted files use the same size limits
+as uploaded files. Clear a selected file to switch back to text input.
+
+Conversion runs in a cancellable worker, in chunks, with no uploads or remote
+viewers. Binary inputs/decoded outputs are limited to 64 MiB, encoded text files
+to 96 MiB, pasted input/copy to 4 MiB, and displayed text to 65,536 characters.
+Large results remain fully downloadable rather than being inserted into the page.
+
+Detection uses `file-type` and conservative text heuristics; it is not file
+validation. Unknown files download as `decoded.bin`. Detection and preview
+failures never discard successfully decoded bytes. Native images/audio/video
+are previewed when the browser supports their actual format/codec. Image
+previews are limited to 8 MiB and 16 megapixels. Text/HTML/XML/Markdown are
+escaped source previews, not executable documents. PDFs are detected and
+downloadable but deliberately never previewed.
+SVG previews are rasterized in browser image mode before display. Active
+HTML/XML/SVG downloads use a binary attachment MIME type, retaining the detected
+extension and original bytes, so their blob URLs do not execute in the app origin.
+Worker operations have a 30-second timeout; SVG loading has a 10-second timeout.
+
+ZIP listing and stored/DEFLATE entry extraction use `fflate`: 16 MiB compressed,
+1,000 entries, 8 MiB expanded per selected file, and CRC-32 verification.
+Encrypted, split, and ZIP64 extraction are unsupported. Nested archives are
+not expanded automatically. Unencrypted DOCX/XLSX/PPTX support bounded
+text/cell-content previews, not original layout: 2 MiB total XML, 24 parts,
+1,000 paragraphs per part, 200 rows and 30 columns per sheet, 2,000 total cells,
+and 65,536 characters of cell/text content. Spreadsheet formulas/macros are never
+executed; dates and cached formula results remain stored values. Unsupported formats still download
+unchanged. No AI model assets are needed for this tool.
+Third-party notices are in [base64.txt](public/licenses/base64.txt).
+
 ## Local image AI tools
 
 - **Watermark Removal** (`#/watermark-removal`): FODUU reconstruction, 1-5

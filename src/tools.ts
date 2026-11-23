@@ -9,6 +9,7 @@ import { EdgeAiStudioTool } from '@/components/EdgeAiStudioTool'
 import { PocketChatTool } from '@/components/PocketChatTool'
 import { WatermarkRemovalTool } from '@/components/WatermarkRemovalTool'
 import { ImageUpscalingTool } from '@/components/ImageUpscalingTool'
+import { Base64Tool } from '@/components/Base64Tool'
 
 export interface Tool {
   id: string
@@ -19,6 +20,12 @@ export interface Tool {
 }
 
 export const TOOLS: Tool[] = [
+  {
+    id: 'base64',
+    name: 'Universal Base64',
+    description: 'Encode any file or decode Base64 locally. Detect formats, preview supported files, and download the original bytes.',
+    component: Base64Tool,
+  },
   {
     id: 'aspect-resize',
     name: 'Aspect Ratio Resize',
