@@ -93,15 +93,18 @@ watermarks requires permission to edit the underlying image.
 
 ### Deployment
 
-The [Pages workflow](.github/workflows/pages.yml) builds and uploads the complete
-static output as an artifact, including models and licenses. Set the repository's
-**Settings > Pages > Source** to **GitHub Actions**, then push to `main` or run
-the workflow manually. The `/tools/` base path is retained.
+Run `npm run deploy` to rebuild, verify that every output file is below GitHub's
+100 MiB Git-file limit, and publish `dist/` to the `gh-pages` branch. The
+FP16-stored watermark model fits this limit. Configure **Settings > Pages >
+Source** as **Deploy from a branch**, selecting **gh-pages** and **/ (root)**.
+The deployment environment must allow `gh-pages`. The `/tools/` base path,
+models, and licenses are preserved.
 
-The FP16-stored watermark file fits below GitHub's 100 MiB regular Git-file
-limit. The old branch-pushing `npm run deploy` path remains disabled; deployment
-continues through Actions artifacts. In **Settings > Environments > github-pages**,
-allow deployments from `main`. No Python or inference server runs in production.
+The [Pages workflow](.github/workflows/pages.yml) remains available as a manual
+artifact-based alternative, not an automatic deployment on pushes to `main`.
+To switch to it, set **Settings > Pages > Source** to **GitHub Actions**, allow
+`main` in **Settings > Environments > github-pages**, and run the workflow.
+No Python or inference server runs in production.
 
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 

@@ -10,7 +10,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "deploy": "node -e \"console.error('Deploy using the GitHub Pages Actions workflow.'); process.exit(1)\""
+    "predeploy": "npm run build && node scripts/check-deploy-size.mjs",
+    "deploy": "gh-pages -d dist"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
